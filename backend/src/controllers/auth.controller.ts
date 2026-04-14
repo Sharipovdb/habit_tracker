@@ -1,13 +1,15 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
+import type { AuthCredentials, AuthResponse } from "@shared";
 import {
   createUser,
   findUserByEmail,
   verifyPassword,
 } from "../services/auth.service";
+import { toUserDto } from "../utils/api-contracts";
 
 export async function register(
   request: FastifyRequest<{
-    Body: { email: string; password: string };
+    Body: AuthCredentials;
   }>,
   reply: FastifyReply
 ) {
@@ -20,13 +22,14 @@ export async function register(
 
   const user = await createUser(email, password);
   const token = request.server.jwt.sign({ id: user.id, email: user.email });
+  const response: AuthResponse = { user: toUserDto(user), token };
 
-  return reply.status(201).send({ user, token });
+  return reply.status(201).send(response);
 }
 
 export async function login(
   request: FastifyRequest<{
-    Body: { email: string; password: string };
+    Body: AuthCredentials;
   }>,
   reply: FastifyReply
 ) {
@@ -43,9 +46,18 @@ export async function login(
   }
 
   const token = request.server.jwt.sign({ id: user.id, email: user.email });
-
-  return reply.send({
-    user: { id: user.id, email: user.email, createdAt: user.createdAt },
+  const response: AuthResponse = {
+    user: toUserDto({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      age: user.age,
+      height: user.height,
+      weight: user.weight,
+      createdAt: user.createdAt,
+    }),
     token,
-  });
+  };
+
+  return reply.send(response);
 }

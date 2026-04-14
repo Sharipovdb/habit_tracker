@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { HabitLog, HabitType } from "../types";
+import { getDietCalendarDisplay } from "../lib/diet";
 
 interface Props {
   logs: HabitLog[];
@@ -40,11 +41,7 @@ function getLogDisplay(
       };
     }
     case "diet": {
-      const score = (data.score as number) ?? 0;
-      return {
-        label: `${score}`,
-        level: score >= 7 ? "good" : score >= 4 ? "medium" : "bad",
-      };
+      return getDietCalendarDisplay(data);
     }
     case "other": {
       const completed = data.completed as boolean;

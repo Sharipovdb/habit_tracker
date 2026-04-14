@@ -1,68 +1,81 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AxiosError } from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import LogForm from "../components/LogForm";
 import StatsDisplay from "../components/StatsDisplay";
-import { getStats, createLog, getLogs } from "../api/habits";
-import type { Habit, HabitLog, HabitStats } from "../types";
-import api from "../api/client";
+import { createLog, getHabit, getLogs, getStats } from "../api/habits";
+import { queryKeys } from "../api/queryKeys";
 
 export default function HabitDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [habit, setHabit] = useState<Habit | null>(null);
-  const [stats, setStats] = useState<HabitStats | null>(null);
-  const [logs, setLogs] = useState<HabitLog[]>([]);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const habitQuery = useQuery({
+    queryKey: id ? queryKeys.habits.detail(id) : ["habits", "detail", "missing-id"],
+    queryFn: () => getHabit(id!),
+    enabled: Boolean(id),
+  });
+  const statsQuery = useQuery({
+    queryKey: id ? queryKeys.habits.stats(id) : ["habits", "stats", "missing-id"],
+    queryFn: () => getStats(id!),
+    enabled: Boolean(id),
+  });
+  const logsQuery = useQuery({
+    queryKey: id ? queryKeys.habits.logs(id) : ["habits", "logs", "missing-id"],
+    queryFn: () => getLogs(id!),
+    enabled: Boolean(id),
+  });
+  const createLogMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => createLog(id!, body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.logs(id!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(id!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]);
+    },
+  });
 
-  useEffect(() => {
-    if (!id) return;
-
-    const fetchData = async () => {
-      try {
-        const { data: habitData } = await api.get<Habit>(`/habits/${id}`);
-        setHabit(habitData);
-
-        const statsData = await getStats(id);
-        setStats(statsData);
-
-        const logsData = await getLogs(id);
-        setLogs(logsData);
-      } catch {
-        setError("Failed to load habit");
-      }
-    };
-    fetchData();
-  }, [id]);
+  const habit = habitQuery.data ?? null;
+  const stats = statsQuery.data ?? null;
+  const logs = logsQuery.data ?? [];
 
   const handleLog = async (data: Record<string, unknown>) => {
     if (!id) return;
     try {
       setMessage("");
-      setError("");
-      await createLog(id, data);
+      createLogMutation.reset();
+      await createLogMutation.mutateAsync(data);
       setMessage("Log submitted!");
-
-      // Refresh stats and logs
-      const statsData = await getStats(id);
-      setStats(statsData);
-      const logsData = await getLogs(id);
-      setLogs(logsData);
-    } catch (err: any) {
-      if (err.response?.status === 409) {
-        setError("Already logged today!");
-      } else {
-        setError("Failed to submit log");
-      }
+    } catch {
+      // Error is surfaced through mutation state.
     }
   };
+
+  const mutationError = createLogMutation.error as AxiosError<{ error?: string }> | null;
+  const error = habitQuery.isError || statsQuery.isError || logsQuery.isError
+    ? "Failed to load habit"
+    : mutationError?.response?.data?.error || (createLogMutation.isError ? "Failed to submit log" : "");
+
+  if ((habitQuery.isLoading || statsQuery.isLoading || logsQuery.isLoading) && !habit) {
+    return (
+      <>
+        <Navbar />
+        <div className="container">{error ? <div className="alert alert-error">{error}</div> : <p>Loading...</p>}</div>
+      </>
+    );
+  }
 
   if (!habit) {
     return (
       <>
         <Navbar />
-        <div className="container">{error ? <div className="alert alert-error">{error}</div> : <p>Loading...</p>}</div>
+        <div className="container">
+          <div className="alert alert-error">{error || "Habit not found"}</div>
+        </div>
       </>
     );
   }

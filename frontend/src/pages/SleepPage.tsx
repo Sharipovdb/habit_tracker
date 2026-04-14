@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
-import { getOrCreateHabit, createLog, getStats, getLogs } from "../api/habits";
-import type { Habit, HabitStats, HabitLog } from "../types";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createLog, getHabits, getLogs, getStats } from "../api/habits";
+import { queryKeys } from "../api/queryKeys";
 import { Moon } from "lucide-react";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 
@@ -26,21 +27,48 @@ function calcSleepScore(hours: number, awakenings: number): number {
 }
 
 export default function SleepPage() {
-  const [sleepHabit, setSleepHabit] = useState<Habit | null>(null);
-  const [stats, setStats] = useState<HabitStats | null>(null);
-  const [logs, setLogs] = useState<HabitLog[]>([]);
   const [hours, setHours] = useState("");
   const [awakenings, setAwakenings] = useState("");
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [result, setResult] = useState<{ score: number; status: string } | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const habitsQuery = useQuery({
+    queryKey: queryKeys.habits.all,
+    queryFn: getHabits,
+  });
+
+  const sleepHabit = habitsQuery.data?.find((habit) => habit.type === "sleep") ?? null;
+  const habitId = sleepHabit?.id;
+  const statsQuery = useQuery({
+    queryKey: habitId ? queryKeys.habits.stats(habitId) : ["habits", "stats", "sleep"],
+    queryFn: () => getStats(habitId!),
+    enabled: Boolean(habitId),
+  });
+  const logsQuery = useQuery({
+    queryKey: habitId ? queryKeys.habits.logs(habitId) : ["habits", "logs", "sleep"],
+    queryFn: () => getLogs(habitId!),
+    enabled: Boolean(habitId),
+  });
+  const createLogMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => createLog(habitId!, body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.logs(habitId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]);
+    },
+  });
+
+  const stats = statsQuery.data ?? null;
+  const logs = logsQuery.data ?? [];
 
   const selectedLog = logs.find((log) => log.date === selectedDate);
 
-  const loadEntryForDate = (date: string, availableLogs: HabitLog[]) => {
-    setSelectedDate(date);
-
+  const syncEntryForDate = (date: string) => {
+    const availableLogs = logs;
     const matchingLog = availableLogs.find((log) => log.date === date);
     const data = matchingLog?.data as Record<string, unknown> | undefined;
 
@@ -59,27 +87,8 @@ export default function SleepPage() {
   };
 
   useEffect(() => {
-    getOrCreateHabit("sleep", "Sleep Control").then((habit) => {
-      setSleepHabit(habit);
-      getStats(habit.id).then(setStats).catch(() => {});
-      getLogs(habit.id)
-        .then((logsData) => {
-          setLogs(logsData);
-          loadEntryForDate(TODAY, logsData);
-        })
-        .catch(() => {});
-    });
-  }, []);
-
-  const refreshData = async (habitId: string) => {
-    const [newStats, newLogs] = await Promise.all([
-      getStats(habitId),
-      getLogs(habitId),
-    ]);
-    setStats(newStats);
-    setLogs(newLogs);
-    loadEntryForDate(selectedDate, newLogs);
-  };
+    syncEntryForDate(selectedDate);
+  }, [logs, selectedDate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,10 +108,9 @@ export default function SleepPage() {
     const status = h >= 6 ? "success" : "fail";
     setResult({ score, status });
 
-    if (sleepHabit) {
+    if (habitId) {
       try {
-        await createLog(sleepHabit.id, { sleepHours: h, awakenings: a, date: selectedDate });
-        await refreshData(sleepHabit.id);
+        await createLogMutation.mutateAsync({ sleepHours: h, awakenings: a, date: selectedDate });
         setMessage(hadExistingLog ? `Sleep log updated for ${formatDateLabel(selectedDate)}.` : `Sleep log saved for ${formatDateLabel(selectedDate)}.`);
       } catch {
         setError("Failed to save log");
@@ -111,10 +119,36 @@ export default function SleepPage() {
   };
 
   const handleDateSelect = (date: string) => {
-    loadEntryForDate(date, logs);
+    setSelectedDate(date);
     setMessage("");
     setError("");
   };
+
+  const hasQueryError = habitsQuery.isError || statsQuery.isError || logsQuery.isError;
+
+  if (habitsQuery.isLoading || (habitId && (statsQuery.isLoading || logsQuery.isLoading))) {
+    return (
+      <div>
+        <div className="page-header">
+          <h2>Sleep Control</h2>
+          <p>Track and analyze your sleep quality</p>
+        </div>
+        <div className="card">Loading sleep data...</div>
+      </div>
+    );
+  }
+
+  if (hasQueryError || !sleepHabit) {
+    return (
+      <div>
+        <div className="page-header">
+          <h2>Sleep Control</h2>
+          <p>Track and analyze your sleep quality</p>
+        </div>
+        <div className="alert alert-error">Failed to load sleep data</div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -165,7 +199,7 @@ export default function SleepPage() {
             </div>
             {error && <div className="alert alert-error">{error}</div>}
             {message && <div className="alert alert-success">{message}</div>}
-            <button type="submit" className="btn btn-primary" style={{ width: "100%" }}>
+            <button type="submit" className="btn btn-primary" style={{ width: "100%" }} disabled={createLogMutation.isPending}>
               {selectedLog ? "Update Sleep Log" : "Save Sleep Log"}
             </button>
           </form>

@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import * as habitService from "../services/habit.service";
 import * as logService from "../services/log.service";
+import { asHabitType, toHabitLogDto } from "../utils/api-contracts";
 
 export async function createLog(
   request: FastifyRequest<{
@@ -22,11 +23,12 @@ export async function createLog(
   const date = (typeof request.body.date === "string" && request.body.date) || new Date().toISOString().split("T")[0];
 
   // Compute data based on habit type
-  const data = logService.computeLogData(habit.type, request.body);
+  const habitType = asHabitType(habit.type);
+  const data = logService.computeLogData(habitType, request.body);
 
   const result = await logService.createLog(habitId, date, data);
 
-  return reply.status(201).send(result.log);
+  return reply.status(201).send(toHabitLogDto(result.log));
 }
 
 export async function getLogs(
@@ -42,7 +44,7 @@ export async function getLogs(
   }
 
   const logs = await logService.getLogsByHabit(habitId);
-  return reply.send(logs);
+  return reply.send(logs.map(toHabitLogDto));
 }
 
 export async function getStats(
@@ -57,6 +59,6 @@ export async function getStats(
     return reply.status(404).send({ error: "Habit not found" });
   }
 
-  const stats = await logService.getHabitStats(habitId, habit.type);
+  const stats = await logService.getHabitStats(habitId, asHabitType(habit.type));
   return reply.send(stats);
 }

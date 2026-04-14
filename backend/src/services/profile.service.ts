@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
+import type { UpdateProfileInput } from "@shared";
 
 export async function getProfile(userId: string) {
   const [user] = await db
@@ -20,7 +21,7 @@ export async function getProfile(userId: string) {
 
 export async function updateProfile(
   userId: string,
-  data: { name?: string; age?: number; height?: number; weight?: number }
+  data: UpdateProfileInput
 ) {
   // Filter out undefined/null values to avoid empty SET clause
   const cleanData: Record<string, string | number> = {};

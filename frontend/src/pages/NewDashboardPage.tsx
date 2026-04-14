@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "../api/dashboard";
+import { queryKeys } from "../api/queryKeys";
 import type { DashboardStats } from "../types";
 import { Activity, ListChecks, TrendingUp, CheckCircle, RefreshCw } from "lucide-react";
+import { formatDietLogDetails } from "../lib/diet";
 import {
   BarChart,
   Bar,
@@ -29,8 +31,7 @@ function formatDetails(log: DashboardStats["recentLogs"][number]) {
   }
 
   if (log.habitType === "diet") {
-    const data = log.data as { score?: number; note?: string };
-    return data.note ? `Score ${data.score ?? 0}: ${data.note}` : `Score ${data.score ?? 0}`;
+    return formatDietLogDetails(log.data);
   }
 
   const data = log.data as { completed?: boolean };
@@ -38,34 +39,26 @@ function formatDetails(log: DashboardStats["recentLogs"][number]) {
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const dashboardQuery = useQuery({
+    queryKey: queryKeys.dashboard.all,
+    queryFn: getDashboardStats,
+  });
 
-  const refresh = useCallback(() => {
-    getDashboardStats().then(setStats).catch(() => {});
-  }, []);
+  const stats = dashboardQuery.data;
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  if (dashboardQuery.isError) {
+    return (
+      <div>
+        <div className="page-header">
+          <h2>Dashboard</h2>
+          <p>Your habit tracking overview</p>
+        </div>
+        <div className="alert alert-error">Failed to load dashboard stats</div>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    const handleFocus = () => refresh();
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refresh();
-      }
-    };
-
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [refresh]);
-
-  if (!stats) {
+  if (dashboardQuery.isLoading || !stats) {
     return (
       <div>
         <div className="page-header">
@@ -99,7 +92,7 @@ export default function DashboardPage() {
           <h2>Dashboard</h2>
           <p>Your habit tracking overview</p>
         </div>
-        <button className="btn btn-secondary" onClick={refresh}>
+        <button className="btn btn-secondary" onClick={() => void dashboardQuery.refetch()} disabled={dashboardQuery.isFetching}>
           <RefreshCw size={16} /> Refresh
         </button>
       </div>

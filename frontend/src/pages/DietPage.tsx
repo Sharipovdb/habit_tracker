@@ -1,46 +1,21 @@
-import { useState, useEffect } from "react";
-import { getOrCreateHabit, createLog, getStats, getLogs } from "../api/habits";
-import type { Habit, HabitStats, HabitLog } from "../types";
-import { Apple } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Apple, Search, Trash2 } from "lucide-react";
+import { createLog, getHabits, getLogs, getStats } from "../api/habits";
+import { searchFood } from "../api/food";
+import { queryKeys } from "../api/queryKeys";
 import MonthlyCalendar from "../components/MonthlyCalendar";
+import {
+  aggregateFoodTotals,
+  calculateFoodTotals,
+  formatDietLogDetails,
+  formatNutritionValue,
+  getDietEntries,
+} from "../lib/diet";
+import type { DietFoodEntry, DietMealName, FoodSearchItem } from "../types";
 
-const FOOD_LEVELS = [
-  {
-    level: 5,
-    label: "Very Healthy",
-    examples: "Buckwheat, eggs, cottage cheese, nuts, vegetables, fish",
-    color: "#22c55e",
-  },
-  {
-    level: 4,
-    label: "Healthy",
-    examples: "Rice, chicken, fruits, yogurt, whole grain bread",
-    color: "#84cc16",
-  },
-  {
-    level: 3,
-    label: "Moderate",
-    examples: "Pasta, sandwiches, juice, mild sauces",
-    color: "#f59e0b",
-  },
-  {
-    level: 2,
-    label: "Unhealthy",
-    examples: "White bread, fried food, sweets, heavy cream",
-    color: "#f97316",
-  },
-  {
-    level: 1,
-    label: "Very Unhealthy",
-    examples: "Chips, soda, candy, fast food, energy drinks",
-    color: "#ef4444",
-  },
-];
-
-const MEALS = ["Breakfast", "Lunch", "Dinner"] as const;
+const MEALS: DietMealName[] = ["Breakfast", "Lunch", "Dinner", "Snack"];
 const TODAY = new Date().toISOString().split("T")[0];
-type MealName = (typeof MEALS)[number];
-type MealSelections = Partial<Record<MealName, number>>;
 
 function formatDateLabel(date: string) {
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
@@ -50,267 +25,468 @@ function formatDateLabel(date: string) {
   });
 }
 
-function buildDietNote(selections: MealSelections) {
-  return `Breakfast: ${selections.Breakfast}/5, Lunch: ${selections.Lunch}/5, Dinner: ${selections.Dinner}/5`;
+function buildEntry(product: FoodSearchItem, meal: DietMealName, grams: number): DietFoodEntry {
+  return {
+    id: crypto.randomUUID(),
+    meal,
+    productCode: product.code,
+    productName: product.name,
+    grams,
+    imageUrl: product.imageUrl,
+    nutritionGrade: product.nutritionGrade,
+    per100g: product.per100g,
+    totals: calculateFoodTotals(product.per100g, grams),
+  };
 }
 
-function parseDietSelections(note?: string) {
-  if (!note) {
-    return {};
-  }
-
-  const match = note.match(/Breakfast:\s*(\d)\/5,\s*Lunch:\s*(\d)\/5,\s*Dinner:\s*(\d)\/5/i);
-  if (!match) {
-    return {};
-  }
-
-  return {
-    Breakfast: Number(match[1]),
-    Lunch: Number(match[2]),
-    Dinner: Number(match[3]),
-  };
+function summarizeEntry(entry: DietFoodEntry) {
+  return `${entry.productName} ${entry.grams}g`;
 }
 
 export default function DietPage() {
-  const [dietHabit, setDietHabit] = useState<Habit | null>(null);
-  const [stats, setStats] = useState<HabitStats | null>(null);
-  const [logs, setLogs] = useState<HabitLog[]>([]);
-  const [selections, setSelections] = useState<MealSelections>({});
   const [selectedDate, setSelectedDate] = useState(TODAY);
-  const [finalScore, setFinalScore] = useState<number | null>(null);
+  const [draftEntries, setDraftEntries] = useState<DietFoodEntry[]>([]);
+  const [searchInput, setSearchInput] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [selectedMeal, setSelectedMeal] = useState<DietMealName>("Breakfast");
+  const [selectedProduct, setSelectedProduct] = useState<FoodSearchItem | null>(null);
+  const [gramsInput, setGramsInput] = useState("100");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [legacyMessage, setLegacyMessage] = useState("");
+  const queryClient = useQueryClient();
 
+  const habitsQuery = useQuery({
+    queryKey: queryKeys.habits.all,
+    queryFn: getHabits,
+  });
+
+  const dietHabit = habitsQuery.data?.find((habit) => habit.type === "diet") ?? null;
+  const habitId = dietHabit?.id;
+  const statsQuery = useQuery({
+    queryKey: habitId ? queryKeys.habits.stats(habitId) : ["habits", "stats", "diet"],
+    queryFn: () => getStats(habitId!),
+    enabled: Boolean(habitId),
+  });
+  const logsQuery = useQuery({
+    queryKey: habitId ? queryKeys.habits.logs(habitId) : ["habits", "logs", "diet"],
+    queryFn: () => getLogs(habitId!),
+    enabled: Boolean(habitId),
+  });
+  const foodSearchQuery = useQuery({
+    queryKey: queryKeys.food.search(submittedQuery),
+    queryFn: () => searchFood(submittedQuery),
+    enabled: submittedQuery.length >= 2,
+    staleTime: 5 * 60 * 1000,
+  });
+  const createLogMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => createLog(habitId!, body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.logs(habitId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]);
+    },
+  });
+
+  const stats = statsQuery.data ?? null;
+  const logs = logsQuery.data ?? [];
+  const searchResults = foodSearchQuery.data?.items ?? [];
   const selectedLog = logs.find((log) => log.date === selectedDate);
-
-  const loadEntryForDate = (date: string, availableLogs: HabitLog[]) => {
-    setSelectedDate(date);
-
-    const matchingLog = availableLogs.find((log) => log.date === date);
-    const data = matchingLog?.data as Record<string, unknown> | undefined;
-
-    if (!data) {
-      setSelections({});
-      setFinalScore(null);
-      return;
-    }
-
-    setSelections(parseDietSelections(typeof data.note === "string" ? data.note : undefined));
-    setFinalScore(typeof data.score === "number" ? data.score : Number(data.score) || null);
-  };
+  const grams = Number(gramsInput);
+  const draftTotals = aggregateFoodTotals(draftEntries);
+  const showSearchResults = foodSearchQuery.isFetching || (!selectedProduct && submittedQuery.length >= 2);
+  const selectedProductTotals =
+    selectedProduct && Number.isFinite(grams) && grams > 0
+      ? calculateFoodTotals(selectedProduct.per100g, grams)
+      : null;
 
   useEffect(() => {
-    getOrCreateHabit("diet", "Healthy Diet").then((habit) => {
-      setDietHabit(habit);
-      getStats(habit.id).then(setStats).catch(() => {});
-      getLogs(habit.id)
-        .then((logsData) => {
-          setLogs(logsData);
-          loadEntryForDate(TODAY, logsData);
-        })
-        .catch(() => {});
-    });
-  }, []);
-
-  const refreshData = async (habitId: string) => {
-    const [newStats, newLogs] = await Promise.all([
-      getStats(habitId),
-      getLogs(habitId),
-    ]);
-    setStats(newStats);
-    setLogs(newLogs);
-    loadEntryForDate(selectedDate, newLogs);
-  };
-
-  const handleSelect = (meal: MealName, level: number) => {
-    setSelections((prev) => ({ ...prev, [meal]: level }));
-  };
-
-  const handleSubmit = async () => {
-    setMessage("");
-    setError("");
-
-    const hadExistingLog = Boolean(selectedLog);
-    const breakfast = selections.Breakfast;
-    const lunch = selections.Lunch;
-    const dinner = selections.Dinner;
-
-    if (breakfast === undefined || lunch === undefined || dinner === undefined) {
-      setError("Select a level for all three meals");
+    const data = selectedLog?.data;
+    if (!data) {
+      setDraftEntries([]);
+      setLegacyMessage("");
       return;
     }
 
-    const avg =
-      Math.round(
-        ((breakfast + lunch + dinner) / 3) * 10
-      ) / 10;
-    const score = Math.round(avg * 2); // Scale 1-5 to 2-10
-    setFinalScore(score);
+    const nextEntries = getDietEntries(data);
+    setDraftEntries(nextEntries);
 
-    if (dietHabit) {
-      try {
-        await createLog(dietHabit.id, {
-          score,
-          note: buildDietNote(selections),
-          date: selectedDate,
-        });
-        await refreshData(dietHabit.id);
-        setMessage(hadExistingLog ? `Diet log updated for ${formatDateLabel(selectedDate)}.` : `Diet log saved for ${formatDateLabel(selectedDate)}.`);
-      } catch {
-        setError("Failed to save log");
-      }
+    if (nextEntries.length === 0) {
+      const summary = formatDietLogDetails(data);
+      setLegacyMessage(
+        summary !== "Diet log"
+          ? `This day has a legacy diet log: ${summary}. Saving new food entries will replace it.`
+          : ""
+      );
+      return;
     }
-  };
+
+    setLegacyMessage("");
+  }, [selectedLog]);
 
   const handleDateSelect = (date: string) => {
-    loadEntryForDate(date, logs);
+    setSelectedDate(date);
     setMessage("");
     setError("");
   };
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+
+    const query = searchInput.trim();
+    if (query.length < 2) {
+      setError("Enter at least 2 characters before searching.");
+      return;
+    }
+
+    setSelectedProduct(null);
+    if (query === submittedQuery) {
+      void foodSearchQuery.refetch();
+      return;
+    }
+
+    setSubmittedQuery(query);
+  };
+
+  const handleAddEntry = () => {
+    setMessage("");
+    setError("");
+
+    if (!selectedProduct) {
+      setError("Select a product from the search results first.");
+      return;
+    }
+
+    if (!Number.isFinite(grams) || grams <= 0) {
+      setError("Enter a valid grams value greater than 0.");
+      return;
+    }
+
+    setDraftEntries((prev) => [...prev, buildEntry(selectedProduct, selectedMeal, grams)]);
+    setGramsInput("100");
+  };
+
+  const handleRemoveEntry = (entryId: string) => {
+    setDraftEntries((prev) => prev.filter((entry) => entry.id !== entryId));
+    setMessage("");
+    setError("");
+  };
+
+  const handleSave = async () => {
+    setMessage("");
+    setError("");
+
+    if (draftEntries.length === 0) {
+      setError("Add at least one food entry before saving.");
+      return;
+    }
+
+    try {
+      await createLogMutation.mutateAsync({
+        items: draftEntries,
+        totals: draftTotals,
+        date: selectedDate,
+      });
+      setLegacyMessage("");
+      setMessage(
+        selectedLog
+          ? `Diet log updated for ${formatDateLabel(selectedDate)}.`
+          : `Diet log saved for ${formatDateLabel(selectedDate)}.`
+      );
+    } catch {
+      setError("Failed to save diet log.");
+    }
+  };
+
+  const hasQueryError = habitsQuery.isError || statsQuery.isError || logsQuery.isError;
+  const searchError = foodSearchQuery.error instanceof Error ? foodSearchQuery.error.message : "Failed to search food.";
+
+  if (habitsQuery.isLoading || (habitId && (statsQuery.isLoading || logsQuery.isLoading))) {
+    return (
+      <div>
+        <div className="page-header">
+          <h2>Healthy Diet</h2>
+          <p>Search real products, calculate macros, and save your daily nutrition.</p>
+        </div>
+        <div className="card">Loading diet data...</div>
+      </div>
+    );
+  }
+
+  if (hasQueryError || !dietHabit) {
+    return (
+      <div>
+        <div className="page-header">
+          <h2>Healthy Diet</h2>
+          <p>Search real products, calculate macros, and save your daily nutrition.</p>
+        </div>
+        <div className="alert alert-error">Failed to load diet data</div>
+      </div>
+    );
+  }
 
   return (
     <div>
       <div className="page-header">
         <h2>Healthy Diet</h2>
-        <p>Rate your meals and track nutrition quality</p>
+        <p>Search Open Food Facts, calculate calories and macros, and build a real food log.</p>
       </div>
 
-      {!dietHabit && (
-        <div className="alert alert-error">
-          Loading diet habit...
-        </div>
-      )}
-
-      {/* Food quality reference */}
       <div className="card" style={{ marginBottom: 24 }}>
         <div className="card-header">
-          <h3>Food Quality Guide</h3>
+          <h3>Daily Nutrition Log</h3>
           <Apple size={20} style={{ color: "var(--success)" }} />
         </div>
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Level</th>
-                <th>Rating</th>
-                <th>Examples</th>
-              </tr>
-            </thead>
-            <tbody>
-              {FOOD_LEVELS.map((f) => (
-                <tr key={f.level}>
-                  <td>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: 28,
-                        height: 28,
-                        borderRadius: 8,
-                        background: f.color + "18",
-                        color: f.color,
-                        fontWeight: 700,
-                        textAlign: "center",
-                        lineHeight: "28px",
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      {f.level}
-                    </span>
-                  </td>
-                  <td style={{ fontWeight: 500 }}>{f.label}</td>
-                  <td style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>{f.examples}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="selected-log-note">
+          <span>
+            {selectedLog ? "Editing nutrition log for" : "Building nutrition log for"} <strong>{formatDateLabel(selectedDate)}</strong>
+          </span>
+          <span>Search is manual to stay within Open Food Facts rate limits.</span>
         </div>
+        <div className="form-group" style={{ marginTop: 16, maxWidth: 260 }}>
+          <label>Date</label>
+          <input type="date" value={selectedDate} onChange={(event) => handleDateSelect(event.target.value)} />
+        </div>
+        {legacyMessage && <div className="alert alert-error">{legacyMessage}</div>}
       </div>
 
-      {/* Meal selection */}
-      <div className="card-grid card-grid-2" style={{ marginBottom: 24 }}>
+      <div className="card-grid card-grid-2" style={{ marginBottom: 24, alignItems: "start" }}>
         <div className="card">
-          <h3 style={{ marginBottom: 20 }}>Rate Your Meals</h3>
-          <div className="form-group">
-            <label>Date</label>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => handleDateSelect(e.target.value)}
-            />
+          <div className="card-header">
+            <h3>Search Products</h3>
           </div>
-          <div className="selected-log-note">
-            <span>
-              {selectedLog ? "Editing meal ratings for" : "Logging meals for"} <strong>{formatDateLabel(selectedDate)}</strong>
-            </span>
-            <span>{selectedLog ? "Adjust meal levels and save to update." : "Use the calendar to jump to any day."}</span>
-          </div>
-          {MEALS.map((meal) => (
-            <div key={meal} style={{ marginBottom: 20 }}>
-              <label style={{ display: "block", fontWeight: 500, marginBottom: 8, fontSize: "0.9rem" }}>
-                {meal}
-              </label>
-              <div className="level-picker">
-                {[1, 2, 3, 4, 5].map((lvl) => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    className={`level-btn level-${lvl} ${selections[meal] === lvl ? "selected" : ""}`}
-                    onClick={() => handleSelect(meal, lvl)}
-                  >
-                    {lvl}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-          {error && <div className="alert alert-error">{error}</div>}
-          {message && <div className="alert alert-success">{message}</div>}
-          <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleSubmit}>
-            {selectedLog ? "Update Diet Log" : "Save Diet Log"}
-          </button>
-        </div>
 
-        {/* Score result */}
-        <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-          {finalScore !== null ? (
-            <>
-              <div
-                className="score-circle"
-                style={{
-                  borderColor: finalScore >= 7 ? "var(--success)" : finalScore >= 4 ? "var(--warning)" : "var(--danger)",
-                  background: finalScore >= 7 ? "var(--success-bg)" : finalScore >= 4 ? "var(--warning-bg)" : "var(--danger-bg)",
+          <form onSubmit={handleSearchSubmit} className="diet-search-form">
+            <div className="diet-search-row">
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search for yogurt, chicken, oats..."
+              />
+              <button className="btn btn-primary" type="submit" disabled={foodSearchQuery.isFetching}>
+                <Search size={16} /> Search
+              </button>
+            </div>
+            <p className="diet-search-hint">The app uses a backend proxy so the external API stays behind your own server.</p>
+          </form>
+
+          {foodSearchQuery.isError && <div className="alert alert-error">{searchError}</div>}
+
+          {selectedProduct && !foodSearchQuery.isFetching && (
+            <div className="search-selection-banner">
+              <span>Selected: <strong>{selectedProduct.name}</strong></span>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setSelectedProduct(null);
+                  setSearchInput("");
                 }}
               >
-                <div
-                  className="score-value"
-                  style={{
-                    color: finalScore >= 7 ? "var(--success)" : finalScore >= 4 ? "var(--warning)" : "var(--danger)",
-                  }}
-                >
-                  {finalScore}
-                </div>
-                <div className="score-label">/ 10</div>
-              </div>
-              <p style={{ marginTop: 16, fontWeight: 600, fontSize: "0.9rem" }}>
-                {finalScore >= 8
-                  ? "Excellent nutrition today!"
-                  : finalScore >= 6
-                  ? "Good eating habits. Keep it up!"
-                  : finalScore >= 4
-                  ? "Room for improvement."
-                  : "Try to include healthier options."}
-              </p>
-            </>
-          ) : (
-            <div style={{ textAlign: "center", color: "var(--text-muted)" }}>
-              <Apple size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-              <p>Rate all three meals to see your score</p>
+                Choose another
+              </button>
             </div>
+          )}
+
+          {showSearchResults && (
+            <div className="food-search-list">
+              {foodSearchQuery.isFetching && <div className="diet-empty-state">Searching products...</div>}
+              {!foodSearchQuery.isFetching && submittedQuery && searchResults.length === 0 && !foodSearchQuery.isError && (
+                <div className="diet-empty-state">No products found for "{submittedQuery}".</div>
+              )}
+
+              {searchResults.map((product) => {
+                const isSelected = selectedProduct?.code === product.code;
+
+                return (
+                  <button
+                    key={product.code}
+                    type="button"
+                    className={`food-result ${isSelected ? "selected" : ""}`}
+                    onClick={() => {
+                      setSelectedProduct(product);
+                      setSearchInput(product.name);
+                    }}
+                  >
+                    <div className="food-result-media">
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt={product.name} />
+                      ) : (
+                        <div className="food-image-placeholder"><Apple size={18} /></div>
+                      )}
+                    </div>
+                    <div className="food-result-content">
+                      <div className="food-result-headline">
+                        <strong>{product.name}</strong>
+                        {product.nutritionGrade && (
+                          <span className="nutrition-grade-badge">Grade {product.nutritionGrade.toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="macro-grid compact">
+                        <div className="macro-item">
+                          <span>Calories</span>
+                          <strong>{formatNutritionValue(product.per100g.calories, "kcal")}</strong>
+                        </div>
+                        <div className="macro-item">
+                          <span>Protein</span>
+                          <strong>{formatNutritionValue(product.per100g.proteins, "g")}</strong>
+                        </div>
+                        <div className="macro-item">
+                          <span>Fat</span>
+                          <strong>{formatNutritionValue(product.per100g.fat, "g")}</strong>
+                        </div>
+                        <div className="macro-item">
+                          <span>Carbs</span>
+                          <strong>{formatNutritionValue(product.per100g.carbohydrates, "g")}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <h3>Selected Product</h3>
+          </div>
+
+          {selectedProduct ? (
+            <div className="diet-product-panel">
+              <div className="food-result-headline" style={{ marginBottom: 14 }}>
+                <div>
+                  <strong>{selectedProduct.name}</strong>
+                  <div className="diet-product-code">Code: {selectedProduct.code}</div>
+                </div>
+                {selectedProduct.nutritionGrade && (
+                  <span className="nutrition-grade-badge">Grade {selectedProduct.nutritionGrade.toUpperCase()}</span>
+                )}
+              </div>
+
+              <div className="diet-selection-grid">
+                <div className="form-group">
+                  <label>Meal</label>
+                  <select value={selectedMeal} onChange={(event) => setSelectedMeal(event.target.value as DietMealName)}>
+                    {MEALS.map((meal) => (
+                      <option key={meal} value={meal}>{meal}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Grams</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={gramsInput}
+                    onChange={(event) => setGramsInput(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="macro-grid">
+                <div className="macro-item">
+                  <span>Per 100 g</span>
+                  <strong>{formatNutritionValue(selectedProduct.per100g.calories, "kcal")}</strong>
+                  <small>P {formatNutritionValue(selectedProduct.per100g.proteins, "g")} / F {formatNutritionValue(selectedProduct.per100g.fat, "g")} / C {formatNutritionValue(selectedProduct.per100g.carbohydrates, "g")}</small>
+                </div>
+                <div className="macro-item emphasis">
+                  <span>For your portion</span>
+                  <strong>{selectedProductTotals ? formatNutritionValue(selectedProductTotals.calories, "kcal") : "-"}</strong>
+                  <small>
+                    P {selectedProductTotals ? formatNutritionValue(selectedProductTotals.proteins, "g") : "-"} / F {selectedProductTotals ? formatNutritionValue(selectedProductTotals.fat, "g") : "-"} / C {selectedProductTotals ? formatNutritionValue(selectedProductTotals.carbohydrates, "g") : "-"}
+                  </small>
+                </div>
+              </div>
+
+              <button className="btn btn-primary" type="button" onClick={handleAddEntry}>
+                Add To Daily Log
+              </button>
+            </div>
+          ) : (
+            <div className="diet-empty-state">Pick a product from the search results to calculate your portion.</div>
           )}
         </div>
       </div>
 
-      {/* Stats */}
+      <div className="card-grid card-grid-2" style={{ marginBottom: 24, alignItems: "start" }}>
+        <div className="card">
+          <div className="card-header">
+            <h3>Saved For {formatDateLabel(selectedDate)}</h3>
+          </div>
+
+          {draftEntries.length > 0 ? (
+            <div className="diet-entry-list">
+              {draftEntries.map((entry) => (
+                <div key={entry.id} className="diet-entry-item">
+                  <div className="diet-entry-meta">
+                    <div>
+                      <div className="diet-entry-title">{entry.meal}: {summarizeEntry(entry)}</div>
+                      <div className="diet-entry-subtitle">
+                        {formatNutritionValue(entry.totals.calories, "kcal")} | P {formatNutritionValue(entry.totals.proteins, "g")} | F {formatNutritionValue(entry.totals.fat, "g")} | C {formatNutritionValue(entry.totals.carbohydrates, "g")}
+                      </div>
+                    </div>
+                    <button className="btn btn-ghost" type="button" onClick={() => handleRemoveEntry(entry.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="diet-empty-state">No food entries for this day yet.</div>
+          )}
+
+          {error && <div className="alert alert-error">{error}</div>}
+          {message && <div className="alert alert-success">{message}</div>}
+
+          <button className="btn btn-primary" style={{ width: "100%", marginTop: 16 }} onClick={handleSave} disabled={createLogMutation.isPending}>
+            {selectedLog ? "Update Diet Log" : "Save Diet Log"}
+          </button>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <h3>Daily Totals</h3>
+          </div>
+
+          <div className="macro-grid">
+            <div className="macro-item emphasis">
+              <span>Calories</span>
+              <strong>{formatNutritionValue(draftTotals.calories, "kcal")}</strong>
+            </div>
+            <div className="macro-item">
+              <span>Protein</span>
+              <strong>{formatNutritionValue(draftTotals.proteins, "g")}</strong>
+            </div>
+            <div className="macro-item">
+              <span>Fat</span>
+              <strong>{formatNutritionValue(draftTotals.fat, "g")}</strong>
+            </div>
+            <div className="macro-item">
+              <span>Carbs</span>
+              <strong>{formatNutritionValue(draftTotals.carbohydrates, "g")}</strong>
+            </div>
+          </div>
+
+          <div className="selected-log-note" style={{ marginTop: 18 }}>
+            <span>{draftEntries.length > 0 ? `${draftEntries.length} tracked food item${draftEntries.length === 1 ? "" : "s"}` : "Add food items to build totals."}</span>
+            <span>Unknown nutrient values stay blank instead of being faked as zero.</span>
+          </div>
+
+          {selectedLog && getDietEntries(selectedLog.data).length > 0 && (
+            <div className="diet-day-total">Saved snapshot: {formatDietLogDetails(selectedLog.data)}</div>
+          )}
+        </div>
+      </div>
+
       {stats && (
         <div className="card-grid card-grid-3">
           <div className="stat-card">
@@ -323,21 +499,18 @@ export default function DietPage() {
           </div>
           <div className="stat-card">
             <div className="stat-value">{stats.totalCompletedDays}</div>
-            <div className="stat-label">Total Days</div>
+            <div className="stat-label">Tracked Days</div>
           </div>
         </div>
       )}
 
-      {/* Monthly Calendar */}
-      {dietHabit && (
-        <MonthlyCalendar
-          logs={logs}
-          habitType="diet"
-          onDayClick={handleDateSelect}
-          selectedDate={selectedDate}
-          helperText="Pick any day to add meal ratings or revise the saved score."
-        />
-      )}
+      <MonthlyCalendar
+        logs={logs}
+        habitType="diet"
+        onDayClick={handleDateSelect}
+        selectedDate={selectedDate}
+        helperText="Pick any day to inspect or replace a saved nutrition snapshot."
+      />
     </div>
   );
 }

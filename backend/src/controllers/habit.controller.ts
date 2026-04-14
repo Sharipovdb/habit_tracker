@@ -1,16 +1,18 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
+import type { CreateHabitInput } from "@shared";
 import * as habitService from "../services/habit.service";
+import { toHabitDto } from "../utils/api-contracts";
 
 export async function createHabit(
   request: FastifyRequest<{
-    Body: { title: string; type: string; target?: string };
+    Body: CreateHabitInput;
   }>,
   reply: FastifyReply
 ) {
   const { title, type, target } = request.body;
   const userId = request.user.id;
   const habit = await habitService.createHabit(userId, title, type, target);
-  return reply.status(201).send(habit);
+  return reply.status(201).send(toHabitDto(habit));
 }
 
 export async function getHabits(
@@ -19,7 +21,7 @@ export async function getHabits(
 ) {
   const userId = request.user.id;
   const habits = await habitService.getHabitsByUser(userId);
-  return reply.send(habits);
+  return reply.send(habits.map(toHabitDto));
 }
 
 export async function getHabit(
@@ -31,7 +33,7 @@ export async function getHabit(
   if (!habit) {
     return reply.status(404).send({ error: "Habit not found" });
   }
-  return reply.send(habit);
+  return reply.send(toHabitDto(habit));
 }
 
 export async function deleteHabit(

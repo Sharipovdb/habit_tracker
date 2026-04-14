@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { habits } from "../db/schema";
 import { eq, and } from "drizzle-orm";
+import type { HabitType } from "@shared";
 
 export const DEFAULT_HABITS = [
   { type: "run", title: "Running Stats" },
@@ -34,7 +35,7 @@ export async function ensureDefaultHabits(userId: string) {
 export async function createHabit(
   userId: string,
   title: string,
-  type: string,
+  type: HabitType,
   target?: string | null
 ) {
   if (type !== "other") {

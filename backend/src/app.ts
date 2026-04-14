@@ -6,6 +6,7 @@ import habitRoutes from "./routes/habit.routes";
 import logRoutes from "./routes/log.routes";
 import profileRoutes from "./routes/profile.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
+import foodRoutes from "./routes/food.routes";
 
 export function buildApp() {
   const fastify = Fastify({
@@ -20,7 +21,7 @@ export function buildApp() {
   fastify.get("/", async () => ({
     status: "ok",
     message: "HabitTracker API is running",
-    endpoints: ["/test", "/api/auth", "/api/profile", "/api/dashboard", "/api/habits"],
+    endpoints: ["/test", "/api/auth", "/api/profile", "/api/dashboard", "/api/habits", "/api/food"],
   }));
   fastify.get("/test", async () => ({ status: "ok", timestamp: new Date().toISOString() }));
   fastify.register(authRoutes, { prefix: "/api/auth" });
@@ -28,6 +29,7 @@ export function buildApp() {
   fastify.register(dashboardRoutes, { prefix: "/api/dashboard" });
   fastify.register(habitRoutes, { prefix: "/api/habits" });
   fastify.register(logRoutes, { prefix: "/api/habits" });
+  fastify.register(foodRoutes, { prefix: "/api/food" });
 
   return fastify;
 }

@@ -1,34 +1,135 @@
 import { db } from "../db";
 import { habitLogs } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
+import type { DietFoodEntry, DietLogData, FoodNutrients, HabitStats, HabitType, LogData } from "@shared";
 
-interface RunData {
-  distance: number;
-  pace: number;
-  duration: number;
-  caloriesBurned: number;
+const DIET_MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"] as const;
+
+function roundToSingleDecimal(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
-interface DietData {
-  score: number;
-  note?: string;
+function asNullableNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return roundToSingleDecimal(value);
+  }
+
+  if (typeof value === "string") {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) {
+      return roundToSingleDecimal(numericValue);
+    }
+  }
+
+  return null;
 }
 
-interface SleepData {
-  sleepHours: number;
-  awakenings: number;
-  score: number;
-  status: "success" | "fail";
+function normalizeNutrients(value: unknown): FoodNutrients {
+  const nutrients = (value as Partial<FoodNutrients> | undefined) ?? {};
+
+  return {
+    calories: asNullableNumber(nutrients.calories),
+    proteins: asNullableNumber(nutrients.proteins),
+    fat: asNullableNumber(nutrients.fat),
+    carbohydrates: asNullableNumber(nutrients.carbohydrates),
+  };
 }
 
-interface OtherData {
-  completed: boolean;
+function calculateEntryTotals(per100g: FoodNutrients, grams: number): FoodNutrients {
+  const factor = grams / 100;
+
+  return {
+    calories: per100g.calories === null ? null : roundToSingleDecimal(per100g.calories * factor),
+    proteins: per100g.proteins === null ? null : roundToSingleDecimal(per100g.proteins * factor),
+    fat: per100g.fat === null ? null : roundToSingleDecimal(per100g.fat * factor),
+    carbohydrates: per100g.carbohydrates === null ? null : roundToSingleDecimal(per100g.carbohydrates * factor),
+  };
 }
 
-export type LogData = RunData | DietData | SleepData | OtherData;
+function aggregateDietTotals(entries: DietFoodEntry[]): FoodNutrients {
+  const sumField = (field: keyof FoodNutrients): number | null => {
+    let total = 0;
+    let hasKnownValue = false;
+
+    for (const entry of entries) {
+      const value = entry.totals[field];
+      if (value === null) {
+        continue;
+      }
+
+      hasKnownValue = true;
+      total += value;
+    }
+
+    return hasKnownValue ? roundToSingleDecimal(total) : null;
+  };
+
+  return {
+    calories: sumField("calories"),
+    proteins: sumField("proteins"),
+    fat: sumField("fat"),
+    carbohydrates: sumField("carbohydrates"),
+  };
+}
+
+function buildDietNote(entries: DietFoodEntry[]): string | undefined {
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  const groupedEntries = new Map<string, string[]>();
+  for (const entry of entries) {
+    const items = groupedEntries.get(entry.meal) ?? [];
+    items.push(`${entry.productName} ${entry.grams}g`);
+    groupedEntries.set(entry.meal, items);
+  }
+
+  return Array.from(groupedEntries.entries())
+    .map(([meal, items]) => `${meal}: ${items.join(", ")}`)
+    .join("; ");
+}
+
+function normalizeDietEntries(value: unknown): DietFoodEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry, index) => {
+      const candidate = (entry as Partial<DietFoodEntry> | undefined) ?? {};
+      const meal = typeof candidate.meal === "string" && DIET_MEALS.includes(candidate.meal as typeof DIET_MEALS[number])
+        ? candidate.meal
+        : null;
+      const productCode = typeof candidate.productCode === "string" ? candidate.productCode.trim() : "";
+      const productName = typeof candidate.productName === "string" ? candidate.productName.trim() : "";
+      const gramsValue = asNullableNumber(candidate.grams);
+
+      if (!meal || !productCode || !productName || gramsValue === null || gramsValue <= 0) {
+        return null;
+      }
+
+      const per100g = normalizeNutrients(candidate.per100g);
+      const grams = roundToSingleDecimal(gramsValue);
+
+      return {
+        id: typeof candidate.id === "string" && candidate.id.trim() ? candidate.id : `${productCode}-${index}`,
+        meal,
+        productCode,
+        productName,
+        grams,
+        imageUrl: typeof candidate.imageUrl === "string" && candidate.imageUrl.trim() ? candidate.imageUrl : null,
+        nutritionGrade: typeof candidate.nutritionGrade === "string" && candidate.nutritionGrade.trim()
+          ? candidate.nutritionGrade
+          : null,
+        per100g,
+        totals: calculateEntryTotals(per100g, grams),
+      };
+    })
+    .filter((entry): entry is DietFoodEntry => entry !== null);
+}
 
 export function computeLogData(
-  type: string,
+  type: HabitType,
   input: Record<string, unknown>
 ): LogData {
   switch (type) {
@@ -42,10 +143,17 @@ export function computeLogData(
       return { distance, pace, duration, caloriesBurned };
     }
     case "diet": {
+      const items = normalizeDietEntries(input.items);
+      const totals = items.length > 0 ? aggregateDietTotals(items) : normalizeNutrients(input.totals);
+      const score = asNullableNumber(input.score) ?? undefined;
+      const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : buildDietNote(items);
+
       return {
-        score: input.score as number,
-        note: (input.note as string) || undefined,
-      };
+        ...(score !== undefined ? { score } : {}),
+        ...(note ? { note } : {}),
+        ...(items.length > 0 ? { items } : {}),
+        ...(items.length > 0 || Object.values(totals).some((value) => value !== null) ? { totals } : {}),
+      } satisfies DietLogData;
     }
     case "sleep": {
       const sleepHours = input.sleepHours as number;
@@ -104,12 +212,12 @@ export async function getLogsByHabit(habitId: string) {
     .orderBy(habitLogs.date);
 }
 
-export function isCompleted(type: string, data: Record<string, unknown>): boolean {
+export function isCompleted(type: HabitType, data: Record<string, unknown>): boolean {
   switch (type) {
     case "run":
       return (data.distance as number) > 0;
     case "diet":
-      return (data.score as number) >= 5;
+      return Array.isArray(data.items) ? data.items.length > 0 : (data.score as number) >= 5;
     case "sleep":
       return data.status === "success";
     case "other":
@@ -119,7 +227,7 @@ export function isCompleted(type: string, data: Record<string, unknown>): boolea
   }
 }
 
-export async function getHabitStats(habitId: string, type: string) {
+export async function getHabitStats(habitId: string, type: HabitType): Promise<HabitStats> {
   const logs = await getLogsByHabit(habitId);
 
   let bestStreak = 0;
@@ -151,7 +259,7 @@ export async function getHabitStats(habitId: string, type: string) {
     }
   }
 
-  const result: Record<string, unknown> = {
+  const result: HabitStats = {
     currentStreak,
     bestStreak,
     totalCompletedDays,

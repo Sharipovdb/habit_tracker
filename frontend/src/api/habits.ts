@@ -1,8 +1,13 @@
 import api from "./client";
-import type { Habit, HabitLog, HabitStats, HabitType } from "../types";
+import type { CreateHabitInput, Habit, HabitLog, HabitStats, HabitType } from "../types";
 
 export async function getHabits(): Promise<Habit[]> {
   const { data } = await api.get<Habit[]>("/habits");
+  return data;
+}
+
+export async function getHabit(id: string): Promise<Habit> {
+  const { data } = await api.get<Habit>(`/habits/${id}`);
   return data;
 }
 
@@ -11,7 +16,8 @@ export async function createHabit(
   type: HabitType,
   target?: string
 ): Promise<Habit> {
-  const { data } = await api.post<Habit>("/habits", { title, type, target });
+  const body: CreateHabitInput = target ? { title, type, target } : { title, type };
+  const { data } = await api.post<Habit>("/habits", body);
   return data;
 }
 

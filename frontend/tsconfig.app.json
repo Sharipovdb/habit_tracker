@@ -8,6 +8,9 @@
     "skipLibCheck": true,
 
     /* Bundler mode */
+    "paths": {
+      "@shared": ["../shared/index.d.ts"]
+    },
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -21,5 +24,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "../shared/**/*.d.ts"]
 }

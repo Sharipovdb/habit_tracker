@@ -1,5 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
+import type { UpdateProfileInput } from "@shared";
 import * as profileService from "../services/profile.service";
+import { toUserDto } from "../utils/api-contracts";
 
 export async function getProfile(request: FastifyRequest, reply: FastifyReply) {
   const userId = request.user.id;
@@ -7,12 +9,12 @@ export async function getProfile(request: FastifyRequest, reply: FastifyReply) {
   if (!profile) {
     return reply.status(404).send({ error: "User not found" });
   }
-  return reply.send(profile);
+  return reply.send(toUserDto(profile));
 }
 
 export async function updateProfile(
   request: FastifyRequest<{
-    Body: { name?: string; age?: number; height?: number; weight?: number };
+    Body: UpdateProfileInput;
   }>,
   reply: FastifyReply
 ) {
@@ -21,5 +23,5 @@ export async function updateProfile(
   if (!updated) {
     return reply.status(404).send({ error: "User not found" });
   }
-  return reply.send(updated);
+  return reply.send(toUserDto(updated));
 }

@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
-import { getOrCreateHabit, createLog, getStats, getLogs } from "../api/habits";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createLog, getHabits, getLogs, getStats } from "../api/habits";
 import { getProfile } from "../api/profile";
-import type { Habit, HabitStats, HabitLog } from "../types";
+import { queryKeys } from "../api/queryKeys";
 import { Activity } from "lucide-react";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 import {
@@ -25,10 +26,6 @@ function formatDateLabel(date: string) {
 }
 
 export default function RunningPage() {
-  const [runHabit, setRunHabit] = useState<Habit | null>(null);
-  const [stats, setStats] = useState<HabitStats | null>(null);
-  const [logs, setLogs] = useState<HabitLog[]>([]);
-  const [userWeight, setUserWeight] = useState<number>(70);
   const [distance, setDistance] = useState("");
   const [pace, setPace] = useState("");
   const [selectedDate, setSelectedDate] = useState(TODAY);
@@ -39,12 +36,47 @@ export default function RunningPage() {
     duration: number;
     calories: number;
   } | null>(null);
+  const queryClient = useQueryClient();
+  const profileQuery = useQuery({
+    queryKey: queryKeys.profile.current,
+    queryFn: getProfile,
+  });
+  const habitsQuery = useQuery({
+    queryKey: queryKeys.habits.all,
+    queryFn: getHabits,
+  });
+
+  const runHabit = habitsQuery.data?.find((habit) => habit.type === "run") ?? null;
+  const habitId = runHabit?.id;
+  const statsQuery = useQuery({
+    queryKey: habitId ? queryKeys.habits.stats(habitId) : ["habits", "stats", "running"],
+    queryFn: () => getStats(habitId!),
+    enabled: Boolean(habitId),
+  });
+  const logsQuery = useQuery({
+    queryKey: habitId ? queryKeys.habits.logs(habitId) : ["habits", "logs", "running"],
+    queryFn: () => getLogs(habitId!),
+    enabled: Boolean(habitId),
+  });
+  const createLogMutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => createLog(habitId!, body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.logs(habitId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId!) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]);
+    },
+  });
+
+  const stats = statsQuery.data ?? null;
+  const logs = logsQuery.data ?? [];
+  const userWeight = profileQuery.data?.weight ?? 70;
 
   const selectedLog = logs.find((log) => log.date === selectedDate);
 
-  const loadEntryForDate = (date: string, availableLogs: HabitLog[]) => {
-    setSelectedDate(date);
-
+  const syncEntryForDate = (date: string) => {
+    const availableLogs = logs;
     const matchingLog = availableLogs.find((log) => log.date === date);
     const data = matchingLog?.data as Record<string, unknown> | undefined;
 
@@ -69,31 +101,8 @@ export default function RunningPage() {
   };
 
   useEffect(() => {
-    getProfile()
-      .then((u) => { if (u.weight) setUserWeight(u.weight); })
-      .catch(() => {});
-
-    getOrCreateHabit("run", "Running Stats").then((habit) => {
-      setRunHabit(habit);
-      getStats(habit.id).then(setStats).catch(() => {});
-      getLogs(habit.id)
-        .then((logsData) => {
-          setLogs(logsData);
-          loadEntryForDate(TODAY, logsData);
-        })
-        .catch(() => {});
-    });
-  }, []);
-
-  const refreshData = async (habitId: string) => {
-    const [newStats, newLogs] = await Promise.all([
-      getStats(habitId),
-      getLogs(habitId),
-    ]);
-    setStats(newStats);
-    setLogs(newLogs);
-    loadEntryForDate(selectedDate, newLogs);
-  };
+    syncEntryForDate(selectedDate);
+  }, [logs, selectedDate, userWeight]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,10 +123,9 @@ export default function RunningPage() {
 
     setLastResult({ distance: d, duration, calories });
 
-    if (runHabit) {
+    if (habitId) {
       try {
-        await createLog(runHabit.id, { distance: d, pace: p, weight: userWeight, date: selectedDate });
-        await refreshData(runHabit.id);
+        await createLogMutation.mutateAsync({ distance: d, pace: p, weight: userWeight, date: selectedDate });
         setMessage(hadExistingLog ? `Run updated for ${formatDateLabel(selectedDate)}.` : `Run saved for ${formatDateLabel(selectedDate)}.`);
       } catch {
         setError("Failed to save log");
@@ -126,10 +134,36 @@ export default function RunningPage() {
   };
 
   const handleDateSelect = (date: string) => {
-    loadEntryForDate(date, logs);
+    setSelectedDate(date);
     setMessage("");
     setError("");
   };
+
+  const hasQueryError = habitsQuery.isError || statsQuery.isError || logsQuery.isError;
+
+  if (habitsQuery.isLoading || (habitId && (statsQuery.isLoading || logsQuery.isLoading))) {
+    return (
+      <div>
+        <div className="page-header">
+          <h2>Running Stats</h2>
+          <p>Track your running performance</p>
+        </div>
+        <div className="card">Loading running data...</div>
+      </div>
+    );
+  }
+
+  if (hasQueryError || !runHabit) {
+    return (
+      <div>
+        <div className="page-header">
+          <h2>Running Stats</h2>
+          <p>Track your running performance</p>
+        </div>
+        <div className="alert alert-error">Failed to load running data</div>
+      </div>
+    );
+  }
 
   const monthlyData = stats?.monthlyStats
     ? Object.entries(stats.monthlyStats).map(([month, data]) => ({
@@ -193,7 +227,7 @@ export default function RunningPage() {
             </p>
             {error && <div className="alert alert-error">{error}</div>}
             {message && <div className="alert alert-success">{message}</div>}
-            <button type="submit" className="btn btn-primary" style={{ width: "100%" }}>
+            <button type="submit" className="btn btn-primary" style={{ width: "100%" }} disabled={createLogMutation.isPending}>
               {selectedLog ? "Update Run" : "Save Run"}
             </button>
           </form>

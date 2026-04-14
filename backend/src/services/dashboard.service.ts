@@ -3,12 +3,14 @@ import { habits, habitLogs } from "../db/schema";
 import { eq, and, desc, gte, inArray, lte } from "drizzle-orm";
 import { ensureDefaultHabits } from "./habit.service";
 import { isCompleted } from "./log.service";
+import type { DashboardStats } from "@shared";
+import { asHabitType } from "../utils/api-contracts";
 
 function formatDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export async function getDashboardStats(userId: string) {
+export async function getDashboardStats(userId: string): Promise<DashboardStats> {
   const userHabits = await ensureDefaultHabits(userId);
   const todayDate = new Date();
   const today = formatDate(todayDate);
@@ -16,15 +18,22 @@ export async function getDashboardStats(userId: string) {
   const monthEnd = formatDate(new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0));
   const habitIds = userHabits.map((habit) => habit.id);
   const habitMap = new Map(userHabits.map((habit) => [habit.id, habit]));
-
-  const emptyStats = {
-    totalHabits: userHabits.length,
-    habitsByType: {
-      run: userHabits.filter((habit) => habit.type === "run").length,
-      diet: userHabits.filter((habit) => habit.type === "diet").length,
-      sleep: userHabits.filter((habit) => habit.type === "sleep").length,
-      other: userHabits.filter((habit) => habit.type === "other").length,
+  const habitsByType = userHabits.reduce<DashboardStats["habitsByType"]>(
+    (counts, habit) => {
+      counts[asHabitType(habit.type)] += 1;
+      return counts;
     },
+    {
+      run: 0,
+      diet: 0,
+      sleep: 0,
+      other: 0,
+    }
+  );
+
+  const emptyStats: DashboardStats = {
+    totalHabits: userHabits.length,
+    habitsByType,
     today: { completed: 0, total: userHabits.length },
     month: {
       completedDays: 0,
@@ -32,19 +41,12 @@ export async function getDashboardStats(userId: string) {
       completedByHabit: userHabits.map((habit) => ({
         habitId: habit.id,
         habitTitle: habit.title,
-        habitType: habit.type,
+        habitType: asHabitType(habit.type),
         completedDays: 0,
         loggedDays: 0,
       })),
     },
-    recentLogs: [] as Array<{
-      id: string;
-      habitId: string;
-      date: string;
-      data: unknown;
-      habitTitle: string;
-      habitType: string;
-    }>,
+    recentLogs: [],
   };
 
   if (habitIds.length === 0) {
@@ -80,7 +82,7 @@ export async function getDashboardStats(userId: string) {
       {
         habitId: habit.id,
         habitTitle: habit.title,
-        habitType: habit.type,
+        habitType: asHabitType(habit.type),
         completedDays: 0,
         loggedDays: 0,
       },
@@ -94,7 +96,7 @@ export async function getDashboardStats(userId: string) {
       continue;
     }
 
-    if (isCompleted(habit.type, log.data as Record<string, unknown>)) {
+    if (isCompleted(asHabitType(habit.type), log.data as Record<string, unknown>)) {
       todayCompleted += 1;
     }
   }
@@ -107,7 +109,7 @@ export async function getDashboardStats(userId: string) {
     }
 
     summary.loggedDays += 1;
-    if (isCompleted(habit.type, log.data as Record<string, unknown>)) {
+    if (isCompleted(asHabitType(habit.type), log.data as Record<string, unknown>)) {
       summary.completedDays += 1;
     }
   }
@@ -117,7 +119,7 @@ export async function getDashboardStats(userId: string) {
 
   return {
     totalHabits: userHabits.length,
-    habitsByType: emptyStats.habitsByType,
+    habitsByType,
     today: {
       completed: todayCompleted,
       total: userHabits.length,
@@ -132,8 +134,10 @@ export async function getDashboardStats(userId: string) {
 
       return {
         ...log,
+        date: typeof log.date === "string" ? log.date : formatDate(log.date),
+        data: log.data as DashboardStats["recentLogs"][number]["data"],
         habitTitle: habit?.title ?? "Unknown Habit",
-        habitType: habit?.type ?? "other",
+        habitType: habit ? asHabitType(habit.type) : "other",
       };
     }),
   };

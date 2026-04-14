@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { useWatch } from "react-hook-form";
 import type { AxiosError } from "axios";
 import { getProfile, updateProfile } from "../api/profile";
+import { queryKeys } from "../api/queryKeys";
 import type { User } from "../types";
 import { Save } from "lucide-react";
 
@@ -29,11 +31,33 @@ function getBmiCategory(bmi: number) {
   return "Obese";
 }
 
+function toProfileFormValues(user: User) {
+  return {
+    name: user.name || "",
+    age: user.age?.toString() || "",
+    height: user.height?.toString() || "",
+    weight: user.weight?.toString() || "",
+  };
+}
+
 export default function ProfilePage() {
-  const [user, setUser] = useState<User | null>(null);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
   const { register, handleSubmit, reset, control } = useForm<ProfileForm>();
+  const profileQuery = useQuery({
+    queryKey: queryKeys.profile.current,
+    queryFn: getProfile,
+  });
+  const updateProfileMutation = useMutation({
+    mutationFn: updateProfile,
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData(queryKeys.profile.current, updatedUser);
+      reset(toProfileFormValues(updatedUser));
+      setMessage("Profile updated successfully!");
+    },
+  });
+
+  const user = profileQuery.data ?? null;
 
   const watchedHeight = useWatch({ control, name: "height" });
   const watchedWeight = useWatch({ control, name: "weight" });
@@ -44,42 +68,44 @@ export default function ProfilePage() {
   const bmiCategory = bmi !== null ? getBmiCategory(bmi) : null;
 
   useEffect(() => {
-    getProfile()
-      .then((u) => {
-        setUser(u);
-        reset({
-          name: u.name || "",
-          age: u.age?.toString() || "",
-          height: u.height?.toString() || "",
-          weight: u.weight?.toString() || "",
-        });
-      })
-      .catch(() => setError("Failed to load profile"));
-  }, [reset]);
+    if (!user) {
+      return;
+    }
+
+    reset(toProfileFormValues(user));
+  }, [reset, user]);
 
   const onSubmit = async (data: ProfileForm) => {
     try {
-      setError("");
       setMessage("");
-      const updated = await updateProfile({
+      updateProfileMutation.reset();
+      await updateProfileMutation.mutateAsync({
         name: data.name || undefined,
         age: data.age ? Number(data.age) : undefined,
         height: data.height ? Number(data.height) : undefined,
         weight: data.weight ? Number(data.weight) : undefined,
       });
-      setUser(updated);
-      reset({
-        name: updated.name || "",
-        age: updated.age?.toString() || "",
-        height: updated.height?.toString() || "",
-        weight: updated.weight?.toString() || "",
-      });
-      setMessage("Profile updated successfully!");
-    } catch (err: unknown) {
-      const apiError = err as AxiosError<{ error?: string }>;
-      setError(apiError.response?.data?.error || "Failed to update profile");
+    } catch {
+      // Error is surfaced through mutation state.
     }
   };
+
+  const mutationError = updateProfileMutation.error as AxiosError<{ error?: string }> | null;
+  const error = profileQuery.isError
+    ? "Failed to load profile"
+    : mutationError?.response?.data?.error || (updateProfileMutation.isError ? "Failed to update profile" : "");
+
+  if (profileQuery.isLoading && !user) {
+    return (
+      <div>
+        <div className="page-header">
+          <h2>Profile</h2>
+          <p>Manage your personal information</p>
+        </div>
+        <div className="card">Loading profile...</div>
+      </div>
+    );
+  }
 
   const initials = user?.name
     ? user.name.charAt(0).toUpperCase()
@@ -159,7 +185,7 @@ export default function ProfilePage() {
               <label>Weight (kg)</label>
               <input type="number" step="0.1" placeholder="70" {...register("weight")} />
             </div>
-            <button type="submit" className="btn btn-primary">
+            <button type="submit" className="btn btn-primary" disabled={updateProfileMutation.isPending}>
               <Save size={16} /> Save Changes
             </button>
           </form>
