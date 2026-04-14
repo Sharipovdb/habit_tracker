@@ -1,21 +1,41 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Apple, Search, Trash2 } from "lucide-react";
-import { createLog, getHabits, getLogs, getStats } from "../api/habits";
+import { createLog, getHabits, getLogs } from "../api/habits";
 import { searchFood } from "../api/food";
+import { getProfile } from "../api/profile";
 import { queryKeys } from "../api/queryKeys";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 import {
   aggregateFoodTotals,
+  calculateBmi,
+  calculateDietTargets,
   calculateFoodTotals,
+  DIET_ACTIVITY_LABELS,
+  DIET_GOAL_LABELS,
   formatDietLogDetails,
   formatNutritionValue,
+  getBmiCategoryLabel,
   getDietEntries,
+  getDietLogActivityLevel,
+  getDietLogGoal,
+  getDietLogTargets,
+  getRecommendedDietGoal,
 } from "../lib/diet";
-import type { DietFoodEntry, DietMealName, FoodSearchItem } from "../types";
+import type { DietActivityLevel, DietFoodEntry, DietGoal, DietMealName, FoodSearchItem } from "../types";
 
 const MEALS: DietMealName[] = ["Breakfast", "Lunch", "Dinner", "Snack"];
 const TODAY = new Date().toISOString().split("T")[0];
+const DIET_GOAL_OPTIONS: Array<{ value: DietGoal; description: string }> = [
+  { value: "cut", description: "Lower calories to reduce weight while keeping protein high." },
+  { value: "maintain", description: "Match your daily energy needs and keep your current shape." },
+  { value: "bulk", description: "Add a controlled calorie surplus to support weight gain." },
+];
+const ACTIVITY_LEVEL_OPTIONS: Array<{ value: DietActivityLevel; description: string }> = [
+  { value: "light", description: "Light activity and easy day-to-day movement." },
+  { value: "medium", description: "Regular training or a moderately active routine." },
+  { value: "high", description: "Hard training volume or a very active lifestyle." },
+];
 
 function formatDateLabel(date: string) {
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
@@ -43,6 +63,14 @@ function summarizeEntry(entry: DietFoodEntry) {
   return `${entry.productName} ${entry.grams}g`;
 }
 
+function formatWholeNumber(value: number | null): string {
+  if (value === null) {
+    return "-";
+  }
+
+  return Math.round(value).toString();
+}
+
 export default function DietPage() {
   const [selectedDate, setSelectedDate] = useState(TODAY);
   const [draftEntries, setDraftEntries] = useState<DietFoodEntry[]>([]);
@@ -51,10 +79,17 @@ export default function DietPage() {
   const [selectedMeal, setSelectedMeal] = useState<DietMealName>("Breakfast");
   const [selectedProduct, setSelectedProduct] = useState<FoodSearchItem | null>(null);
   const [gramsInput, setGramsInput] = useState("100");
+  const [goal, setGoal] = useState<DietGoal>("maintain");
+  const [activityLevel, setActivityLevel] = useState<DietActivityLevel>("medium");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [legacyMessage, setLegacyMessage] = useState("");
   const queryClient = useQueryClient();
+
+  const profileQuery = useQuery({
+    queryKey: queryKeys.profile.current,
+    queryFn: getProfile,
+  });
 
   const habitsQuery = useQuery({
     queryKey: queryKeys.habits.all,
@@ -63,11 +98,6 @@ export default function DietPage() {
 
   const dietHabit = habitsQuery.data?.find((habit) => habit.type === "diet") ?? null;
   const habitId = dietHabit?.id;
-  const statsQuery = useQuery({
-    queryKey: habitId ? queryKeys.habits.stats(habitId) : ["habits", "stats", "diet"],
-    queryFn: () => getStats(habitId!),
-    enabled: Boolean(habitId),
-  });
   const logsQuery = useQuery({
     queryKey: habitId ? queryKeys.habits.logs(habitId) : ["habits", "logs", "diet"],
     queryFn: () => getLogs(habitId!),
@@ -84,16 +114,21 @@ export default function DietPage() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.habits.logs(habitId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId!) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
       ]);
     },
   });
 
-  const stats = statsQuery.data ?? null;
   const logs = logsQuery.data ?? [];
   const searchResults = foodSearchQuery.data?.items ?? [];
   const selectedLog = logs.find((log) => log.date === selectedDate);
+  const profileHeight = profileQuery.data?.height ?? null;
+  const profileWeight = profileQuery.data?.weight ?? null;
+  const profileBmi = calculateBmi(profileHeight, profileWeight);
+  const defaultGoal = profileBmi === null ? "maintain" : getRecommendedDietGoal(profileBmi);
+  const savedGoal = getDietLogGoal(selectedLog?.data);
+  const savedActivityLevel = getDietLogActivityLevel(selectedLog?.data);
+  const savedTargets = getDietLogTargets(selectedLog?.data);
   const grams = Number(gramsInput);
   const draftTotals = aggregateFoodTotals(draftEntries);
   const showSearchResults = foodSearchQuery.isFetching || (!selectedProduct && submittedQuery.length >= 2);
@@ -101,9 +136,30 @@ export default function DietPage() {
     selectedProduct && Number.isFinite(grams) && grams > 0
       ? calculateFoodTotals(selectedProduct.per100g, grams)
       : null;
+  const calculatedTargets = calculateDietTargets({
+    heightCm: profileHeight,
+    weightKg: profileWeight,
+    goal,
+    activityLevel,
+  });
+  const canReuseSavedTargets = Boolean(savedTargets && savedGoal === goal && savedActivityLevel === activityLevel);
+  const activeTargets = calculatedTargets ?? (canReuseSavedTargets ? savedTargets : null);
+  const activeBmi = activeTargets?.bmi ?? profileBmi;
+  const recommendedGoal = activeTargets?.recommendedGoal ?? (profileBmi === null ? null : getRecommendedDietGoal(profileBmi));
+  const calorieProgressPercent =
+    activeTargets && draftTotals.calories !== null ? Math.round((draftTotals.calories / activeTargets.targetCalories) * 100) : null;
+  const proteinProgressPercent =
+    activeTargets && draftTotals.proteins !== null ? Math.round((draftTotals.proteins / activeTargets.targetProtein) * 100) : null;
+  const calorieProgressWidth = calorieProgressPercent === null ? 0 : Math.max(0, Math.min(calorieProgressPercent, 100));
+  const proteinProgressWidth = proteinProgressPercent === null ? 0 : Math.max(0, Math.min(proteinProgressPercent, 100));
+  const calorieDelta = activeTargets && draftTotals.calories !== null ? Math.round(draftTotals.calories - activeTargets.targetCalories) : null;
+  const hasProfileMetrics = Boolean(profileHeight && profileWeight);
 
   useEffect(() => {
     const data = selectedLog?.data;
+    setGoal(getDietLogGoal(data) ?? defaultGoal);
+    setActivityLevel(getDietLogActivityLevel(data) ?? "medium");
+
     if (!data) {
       setDraftEntries([]);
       setLegacyMessage("");
@@ -124,7 +180,7 @@ export default function DietPage() {
     }
 
     setLegacyMessage("");
-  }, [selectedLog]);
+  }, [defaultGoal, selectedLog]);
 
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
@@ -186,9 +242,13 @@ export default function DietPage() {
     }
 
     try {
+      const targetsToSave = calculatedTargets ?? (canReuseSavedTargets ? savedTargets : null);
       await createLogMutation.mutateAsync({
         items: draftEntries,
         totals: draftTotals,
+        goal,
+        activityLevel,
+        ...(targetsToSave ? { targets: targetsToSave } : {}),
         date: selectedDate,
       });
       setLegacyMessage("");
@@ -202,10 +262,10 @@ export default function DietPage() {
     }
   };
 
-  const hasQueryError = habitsQuery.isError || statsQuery.isError || logsQuery.isError;
+  const hasQueryError = habitsQuery.isError || logsQuery.isError;
   const searchError = foodSearchQuery.error instanceof Error ? foodSearchQuery.error.message : "Failed to search food.";
 
-  if (habitsQuery.isLoading || (habitId && (statsQuery.isLoading || logsQuery.isLoading))) {
+  if (habitsQuery.isLoading || (habitId && logsQuery.isLoading)) {
     return (
       <div>
         <div className="page-header">
@@ -247,11 +307,48 @@ export default function DietPage() {
           </span>
           <span>Search is manual to stay within Open Food Facts rate limits.</span>
         </div>
-        <div className="form-group" style={{ marginTop: 16, maxWidth: 260 }}>
-          <label>Date</label>
-          <input type="date" value={selectedDate} onChange={(event) => handleDateSelect(event.target.value)} />
+        <div className="diet-plan-grid">
+          <div className="form-group">
+            <label>Date</label>
+            <input type="date" value={selectedDate} onChange={(event) => handleDateSelect(event.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Goal</label>
+            <select value={goal} onChange={(event) => setGoal(event.target.value as DietGoal)}>
+              {DIET_GOAL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{DIET_GOAL_LABELS[option.value]}</option>
+              ))}
+            </select>
+            <div className="diet-plan-hint">{DIET_GOAL_OPTIONS.find((option) => option.value === goal)?.description}</div>
+          </div>
+          <div className="form-group">
+            <label>Activity Factor</label>
+            <select value={activityLevel} onChange={(event) => setActivityLevel(event.target.value as DietActivityLevel)}>
+              {ACTIVITY_LEVEL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{DIET_ACTIVITY_LABELS[option.value]}</option>
+              ))}
+            </select>
+            <div className="diet-plan-hint">{ACTIVITY_LEVEL_OPTIONS.find((option) => option.value === activityLevel)?.description}</div>
+          </div>
+        </div>
+        <div className="diet-target-note">
+          {activeTargets ? (
+            <>
+              <span>
+                BMI <strong>{activeBmi?.toFixed(1)}</strong>
+                {activeTargets.bmiCategory ? ` • ${getBmiCategoryLabel(activeTargets.bmiCategory)}` : ""}
+                {recommendedGoal ? ` • Recommended mode: ${DIET_GOAL_LABELS[recommendedGoal]}` : ""}
+              </span>
+              <span>TDEE uses activity factor <strong>{activeTargets.activityFactor}x</strong>.</span>
+            </>
+          ) : hasProfileMetrics ? (
+            <span>Choose goal and activity to calculate your daily calorie and protein targets.</span>
+          ) : (
+            <span>Fill in height and weight on the profile page to unlock BMI, calorie target, and protein target.</span>
+          )}
         </div>
         {legacyMessage && <div className="alert alert-error">{legacyMessage}</div>}
+        {profileQuery.isError && <div className="alert alert-error">Profile metrics could not be loaded. Nutrition targets are temporarily unavailable.</div>}
       </div>
 
       <div className="card-grid card-grid-2" style={{ marginBottom: 24, alignItems: "start" }}>
@@ -481,28 +578,84 @@ export default function DietPage() {
             <span>Unknown nutrient values stay blank instead of being faked as zero.</span>
           </div>
 
+          {activeTargets ? (
+            <div className="diet-progress-panel">
+              <div className="diet-progress-header">
+                <strong>Daily target progress</strong>
+                <span>
+                  {draftTotals.calories !== null
+                    ? `${formatWholeNumber(draftTotals.calories)} / ${activeTargets.targetCalories} kcal`
+                    : `0 / ${activeTargets.targetCalories} kcal`}
+                </span>
+              </div>
+              <div className="diet-progress-track">
+                <div
+                  className={`diet-progress-fill${calorieProgressPercent !== null && calorieProgressPercent > 100 ? " is-over" : ""}`}
+                  style={{ width: `${calorieProgressWidth}%` }}
+                />
+              </div>
+              <div className="diet-progress-caption">
+                {calorieProgressPercent === null
+                  ? "Calories will appear here as soon as selected foods have known values."
+                  : calorieProgressPercent <= 100
+                    ? `${calorieProgressPercent}% of the daily calorie target completed.`
+                    : `${calorieProgressPercent}% of the daily calorie target completed, ${Math.abs(calorieDelta ?? 0)} kcal above target.`}
+              </div>
+            </div>
+          ) : (
+            <div className="diet-day-total">Add height and weight in your profile to see daily calorie and protein targets.</div>
+          )}
+
           {selectedLog && getDietEntries(selectedLog.data).length > 0 && (
             <div className="diet-day-total">Saved snapshot: {formatDietLogDetails(selectedLog.data)}</div>
           )}
         </div>
       </div>
 
-      {stats && (
-        <div className="card-grid card-grid-3">
-          <div className="stat-card">
-            <div className="stat-value">{stats.currentStreak}</div>
-            <div className="stat-label">Current Streak</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{stats.bestStreak}</div>
-            <div className="stat-label">Best Streak</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{stats.totalCompletedDays}</div>
-            <div className="stat-label">Tracked Days</div>
+      <div className="card-grid card-grid-3" style={{ marginBottom: 24 }}>
+        <div className="stat-card">
+          <div className="stat-value">{activeTargets ? `${activeTargets.targetCalories}` : "—"}</div>
+          <div className="stat-label">Daily Calorie Target</div>
+          <div className="stat-meta">
+            {activeTargets
+              ? `${DIET_GOAL_LABELS[goal]} • ${DIET_ACTIVITY_LABELS[activityLevel]} ${activeTargets.activityFactor}x`
+              : "Needs height and weight from your profile"}
           </div>
         </div>
-      )}
+        <div className="stat-card">
+          <div className="stat-value">{calorieProgressPercent !== null ? `${calorieProgressPercent}%` : "—"}</div>
+          <div className="stat-label">Calorie Progress</div>
+          <div className="stat-meta">
+            {activeTargets && draftTotals.calories !== null
+              ? calorieProgressPercent !== null && calorieProgressPercent > 100
+                ? `${Math.abs(calorieDelta ?? 0)} kcal above the plan`
+                : `${formatWholeNumber(draftTotals.calories)} of ${activeTargets.targetCalories} kcal consumed`
+              : "Add foods with known calories to track progress"}
+          </div>
+          {activeTargets && (
+            <div className="diet-mini-progress-track">
+              <div
+                className={`diet-mini-progress-fill${calorieProgressPercent !== null && calorieProgressPercent > 100 ? " is-over" : ""}`}
+                style={{ width: `${calorieProgressWidth}%` }}
+              />
+            </div>
+          )}
+        </div>
+        <div className="stat-card">
+          <div className="stat-value">{activeTargets ? `${formatWholeNumber(activeTargets.targetProtein)}g` : "—"}</div>
+          <div className="stat-label">Daily Protein Target</div>
+          <div className="stat-meta">
+            {activeTargets && draftTotals.proteins !== null
+              ? `${proteinProgressPercent ?? 0}% completed • ${formatNutritionValue(draftTotals.proteins, "g")} eaten`
+              : "Protein target is calculated from weight and goal"}
+          </div>
+          {activeTargets && (
+            <div className="diet-mini-progress-track">
+              <div className="diet-mini-progress-fill" style={{ width: `${proteinProgressWidth}%` }} />
+            </div>
+          )}
+        </div>
+      </div>
 
       <MonthlyCalendar
         logs={logs}

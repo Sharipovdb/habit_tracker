@@ -1,4 +1,33 @@
-import type { DietFoodEntry, DietLogData, FoodNutrients } from "../types";
+import type {
+  BmiCategory,
+  DietActivityLevel,
+  DietFoodEntry,
+  DietGoal,
+  DietLogData,
+  DietTargets,
+  FoodNutrients,
+} from "../types";
+
+const DIET_GOALS = ["cut", "maintain", "bulk"] as const;
+const DIET_ACTIVITY_LEVELS = ["light", "medium", "high"] as const;
+
+export const DIET_ACTIVITY_FACTORS: Record<DietActivityLevel, number> = {
+  light: 1.375,
+  medium: 1.55,
+  high: 1.725,
+};
+
+export const DIET_GOAL_LABELS: Record<DietGoal, string> = {
+  cut: "Lose Weight",
+  maintain: "Maintain Shape",
+  bulk: "Gain Weight",
+};
+
+export const DIET_ACTIVITY_LABELS: Record<DietActivityLevel, string> = {
+  light: "Light",
+  medium: "Medium",
+  high: "High",
+};
 
 function roundToSingleDecimal(value: number): number {
   return Math.round(value * 10) / 10;
@@ -166,4 +195,178 @@ export function getDietCalendarDisplay(value: unknown): { label: string; level: 
     label: `${score}`,
     level: score >= 7 ? "good" : score >= 4 ? "medium" : "bad",
   };
+}
+
+function isDietGoal(value: unknown): value is DietGoal {
+  return typeof value === "string" && DIET_GOALS.includes(value as DietGoal);
+}
+
+function isDietActivityLevel(value: unknown): value is DietActivityLevel {
+  return typeof value === "string" && DIET_ACTIVITY_LEVELS.includes(value as DietActivityLevel);
+}
+
+export function roundNutritionValue(value: number): number {
+  return roundToSingleDecimal(value);
+}
+
+export function calculateBmi(heightCm?: number | null, weightKg?: number | null): number | null {
+  if (!heightCm || !weightKg || heightCm <= 0 || weightKg <= 0) {
+    return null;
+  }
+
+  const heightInMeters = heightCm / 100;
+  return roundToSingleDecimal(weightKg / (heightInMeters * heightInMeters));
+}
+
+export function getBmiCategory(bmi: number): BmiCategory {
+  if (bmi < 18.5) {
+    return "underweight";
+  }
+
+  if (bmi < 25) {
+    return "normal";
+  }
+
+  if (bmi < 30) {
+    return "overweight";
+  }
+
+  return "obese";
+}
+
+export function getBmiCategoryLabel(category: BmiCategory): string {
+  switch (category) {
+    case "underweight":
+      return "Underweight";
+    case "normal":
+      return "Normal";
+    case "overweight":
+      return "Overweight";
+    case "obese":
+      return "Obese";
+    default:
+      return "Unknown";
+  }
+}
+
+export function getRecommendedDietGoal(bmi: number): DietGoal {
+  if (bmi < 18.5) {
+    return "bulk";
+  }
+
+  if (bmi > 25) {
+    return "cut";
+  }
+
+  return "maintain";
+}
+
+function calculateTargetWeight(heightCm: number): number {
+  const heightInMeters = heightCm / 100;
+  return roundToSingleDecimal(24.9 * heightInMeters * heightInMeters);
+}
+
+export function calculateDietTargets(params: {
+  heightCm?: number | null;
+  weightKg?: number | null;
+  goal: DietGoal;
+  activityLevel: DietActivityLevel;
+}): DietTargets | null {
+  const { heightCm, weightKg, goal, activityLevel } = params;
+  if (!heightCm || !weightKg || heightCm <= 0 || weightKg <= 0) {
+    return null;
+  }
+
+  const bmi = calculateBmi(heightCm, weightKg);
+  if (bmi === null) {
+    return null;
+  }
+
+  const bmiCategory = getBmiCategory(bmi);
+  const recommendedGoal = getRecommendedDietGoal(bmi);
+  const activityFactor = DIET_ACTIVITY_FACTORS[activityLevel];
+  const bmr = weightKg * 24;
+  const tdee = bmr * activityFactor;
+
+  let targetCalories = tdee;
+  let proteinMultiplier = 1.4;
+
+  if (goal === "cut") {
+    targetCalories = tdee - 400;
+    proteinMultiplier = 2;
+  } else if (goal === "bulk") {
+    targetCalories = tdee + 300;
+    proteinMultiplier = 1.8;
+  }
+
+  targetCalories = Math.max(1200, Math.round(targetCalories));
+
+  const proteinWeight = goal === "cut" && bmi > 30 ? Math.min(weightKg, calculateTargetWeight(heightCm)) : weightKg;
+  const targetProtein = roundToSingleDecimal(proteinWeight * proteinMultiplier);
+
+  return {
+    bmi,
+    bmiCategory,
+    recommendedGoal,
+    activityFactor,
+    targetCalories,
+    targetProtein,
+  } satisfies DietTargets;
+}
+
+export function getDietGoal(value: unknown): DietGoal | null {
+  return isDietGoal(value) ? value : null;
+}
+
+export function getDietActivityLevel(value: unknown): DietActivityLevel | null {
+  return isDietActivityLevel(value) ? value : null;
+}
+
+export function getDietTargets(value: unknown): DietTargets | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<DietTargets>;
+  const goal = getDietGoal(candidate.recommendedGoal);
+  const bmiCategoryValue = candidate.bmiCategory;
+  const bmiCategory =
+    bmiCategoryValue === "underweight" ||
+    bmiCategoryValue === "normal" ||
+    bmiCategoryValue === "overweight" ||
+    bmiCategoryValue === "obese"
+      ? bmiCategoryValue
+      : null;
+  const bmi = asNullableNumber(candidate.bmi);
+  const targetCalories = asNullableNumber(candidate.targetCalories);
+  const targetProtein = asNullableNumber(candidate.targetProtein);
+  const activityFactor = asNullableNumber(candidate.activityFactor);
+
+  if (targetCalories === null || targetCalories <= 0 || targetProtein === null || targetProtein <= 0 || activityFactor === null) {
+    return null;
+  }
+
+  return {
+    bmi,
+    bmiCategory,
+    recommendedGoal: goal,
+    activityFactor,
+    targetCalories,
+    targetProtein,
+  } satisfies DietTargets;
+}
+
+export function getDietLogGoal(value: unknown): DietGoal | null {
+  const data = (value as DietLogData | undefined) ?? {};
+  return getDietGoal(data.goal);
+}
+
+export function getDietLogActivityLevel(value: unknown): DietActivityLevel | null {
+  const data = (value as DietLogData | undefined) ?? {};
+  return getDietActivityLevel(data.activityLevel);
+}
+
+export function getDietLogTargets(value: unknown): DietTargets | null {
+  const data = (value as DietLogData | undefined) ?? {};
+  return getDietTargets(data.targets);
 }

@@ -1,9 +1,23 @@
 import { db } from "../db";
 import { habitLogs } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
-import type { DietFoodEntry, DietLogData, FoodNutrients, HabitStats, HabitType, LogData } from "@shared";
+import type {
+  BmiCategory,
+  DietActivityLevel,
+  DietFoodEntry,
+  DietGoal,
+  DietLogData,
+  DietTargets,
+  FoodNutrients,
+  HabitStats,
+  HabitType,
+  LogData,
+} from "@shared";
 
 const DIET_MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"] as const;
+const DIET_GOALS = ["cut", "maintain", "bulk"] as const;
+const DIET_ACTIVITY_LEVELS = ["light", "medium", "high"] as const;
+const BMI_CATEGORIES = ["underweight", "normal", "overweight", "obese"] as const;
 
 function roundToSingleDecimal(value: number): number {
   return Math.round(value * 10) / 10;
@@ -89,6 +103,49 @@ function buildDietNote(entries: DietFoodEntry[]): string | undefined {
     .join("; ");
 }
 
+function normalizeDietGoal(value: unknown): DietGoal | undefined {
+  return typeof value === "string" && DIET_GOALS.includes(value as DietGoal) ? (value as DietGoal) : undefined;
+}
+
+function normalizeDietActivityLevel(value: unknown): DietActivityLevel | undefined {
+  return typeof value === "string" && DIET_ACTIVITY_LEVELS.includes(value as DietActivityLevel)
+    ? (value as DietActivityLevel)
+    : undefined;
+}
+
+function normalizeBmiCategory(value: unknown): BmiCategory | null {
+  return typeof value === "string" && BMI_CATEGORIES.includes(value as BmiCategory)
+    ? (value as BmiCategory)
+    : null;
+}
+
+function normalizeDietTargets(value: unknown): DietTargets | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Partial<DietTargets>;
+  const bmi = asNullableNumber(candidate.bmi);
+  const targetCalories = asNullableNumber(candidate.targetCalories);
+  const targetProtein = asNullableNumber(candidate.targetProtein);
+  const activityFactor = asNullableNumber(candidate.activityFactor);
+  const recommendedGoal = normalizeDietGoal(candidate.recommendedGoal);
+  const bmiCategory = normalizeBmiCategory(candidate.bmiCategory);
+
+  if (targetCalories === null || targetCalories <= 0 || targetProtein === null || targetProtein <= 0 || activityFactor === null) {
+    return undefined;
+  }
+
+  return {
+    bmi,
+    bmiCategory,
+    recommendedGoal: recommendedGoal ?? null,
+    activityFactor,
+    targetCalories,
+    targetProtein,
+  } satisfies DietTargets;
+}
+
 function normalizeDietEntries(value: unknown): DietFoodEntry[] {
   if (!Array.isArray(value)) {
     return [];
@@ -147,12 +204,18 @@ export function computeLogData(
       const totals = items.length > 0 ? aggregateDietTotals(items) : normalizeNutrients(input.totals);
       const score = asNullableNumber(input.score) ?? undefined;
       const note = typeof input.note === "string" && input.note.trim() ? input.note.trim() : buildDietNote(items);
+      const goal = normalizeDietGoal(input.goal);
+      const activityLevel = normalizeDietActivityLevel(input.activityLevel);
+      const targets = normalizeDietTargets(input.targets);
 
       return {
         ...(score !== undefined ? { score } : {}),
         ...(note ? { note } : {}),
         ...(items.length > 0 ? { items } : {}),
         ...(items.length > 0 || Object.values(totals).some((value) => value !== null) ? { totals } : {}),
+        ...(goal ? { goal } : {}),
+        ...(activityLevel ? { activityLevel } : {}),
+        ...(targets ? { targets } : {}),
       } satisfies DietLogData;
     }
     case "sleep": {

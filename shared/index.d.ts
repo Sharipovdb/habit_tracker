@@ -83,11 +83,29 @@ export interface DietFoodEntry {
   totals: FoodNutrients;
 }
 
+export type DietGoal = "cut" | "maintain" | "bulk";
+
+export type DietActivityLevel = "light" | "medium" | "high";
+
+export type BmiCategory = "underweight" | "normal" | "overweight" | "obese";
+
+export interface DietTargets {
+  bmi: number | null;
+  bmiCategory: BmiCategory | null;
+  recommendedGoal: DietGoal | null;
+  activityFactor: number;
+  targetCalories: number;
+  targetProtein: number;
+}
+
 export interface DietLogData {
   score?: number;
   note?: string;
   items?: DietFoodEntry[];
   totals?: FoodNutrients;
+  goal?: DietGoal;
+  activityLevel?: DietActivityLevel;
+  targets?: DietTargets;
 }
 
 export interface SleepLogData {
