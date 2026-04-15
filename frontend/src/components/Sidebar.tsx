@@ -11,6 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { Theme } from "../hooks/useTheme";
+import { logoutUser } from "../api/auth";
 
 interface Props {
   theme: Theme;
@@ -20,8 +21,8 @@ interface Props {
 export default function Sidebar({ theme, onToggleTheme }: Props) {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
+  const handleLogout = async () => {
+    await logoutUser();
     navigate("/login");
   };
 

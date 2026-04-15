@@ -1,10 +1,11 @@
 import { useNavigate } from "react-router-dom";
+import { logoutUser } from "../api/auth";
 
 export default function Navbar() {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
+  const handleLogout = async () => {
+    await logoutUser();
     navigate("/login");
   };
 

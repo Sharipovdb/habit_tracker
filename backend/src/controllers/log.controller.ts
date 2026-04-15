@@ -10,7 +10,7 @@ export async function createLog(
   }>,
   reply: FastifyReply
 ) {
-  const userId = request.user.id;
+  const userId = request.authSession.user.id;
   const habitId = request.params.id;
 
   // Verify habit belongs to user
@@ -35,7 +35,7 @@ export async function getLogs(
   request: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply
 ) {
-  const userId = request.user.id;
+  const userId = request.authSession.user.id;
   const habitId = request.params.id;
 
   const habit = await habitService.getHabitById(habitId, userId);
@@ -51,7 +51,7 @@ export async function getStats(
   request: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply
 ) {
-  const userId = request.user.id;
+  const userId = request.authSession.user.id;
   const habitId = request.params.id;
 
   const habit = await habitService.getHabitById(habitId, userId);
