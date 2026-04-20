@@ -5,6 +5,7 @@ const authBaseUrl = apiBaseUrl.replace(/\/api\/?$/, "");
 
 export const authClient = createAuthClient({
   baseURL: authBaseUrl,
+  basePath: "/api/auth",
   disableDefaultFetchPlugins: true,
   fetchOptions: {
     credentials: "include",

@@ -48,6 +48,7 @@ async function verifyPasswordWithLegacyFallback({
 export const auth = betterAuth({
   appName: "HabitTracker",
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  basePath: "/api/auth",
   trustedOrigins: getTrustedOrigins(),
   database: drizzleAdapter(db, {
     provider: "pg",
