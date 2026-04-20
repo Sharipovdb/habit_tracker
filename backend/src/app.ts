@@ -9,15 +9,7 @@ import profileRoutes from "./routes/profile.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import foodRoutes from "./routes/food.routes.js";
 import { authNodeHandler, syncLegacyCredentialAccounts } from "./auth.js";
-
-function getAllowedAuthOrigins() {
-  const configuredOrigins = (process.env.CLIENT_ORIGIN ?? "http://localhost:5173")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  return new Set(["http://localhost:3000", ...configuredOrigins]);
-}
+import { isAllowedOrigin } from "./utils/origins.js";
 
 function hasMissingRelationError(error: unknown) {
   if (!error || typeof error !== "object") {
@@ -42,7 +34,7 @@ function applyAuthCorsHeaders(request: { headers: Record<string, unknown> }, raw
     return;
   }
 
-  if (!getAllowedAuthOrigins().has(originHeader)) {
+  if (!isAllowedOrigin(originHeader)) {
     return;
   }
 
