@@ -3,8 +3,8 @@ import bcrypt from "bcryptjs";
 import { betterAuth } from "better-auth";
 import { toNodeHandler } from "better-auth/node";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
-import { db } from "./db";
-import { accounts, users, sessions, verifications } from "./db/schema";
+import { db } from "./db/index.js";
+import { accounts, users, sessions, verifications } from "./db/schema.js";
 import {
   hashPassword as scryptHash,
   verifyPassword as scryptVerify,

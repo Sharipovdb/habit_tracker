@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { getProfile, updateProfile } from "../controllers/profile.controller";
-import { updateProfileSchema } from "../schemas/profile.schema";
+import { getProfile, updateProfile } from "../controllers/profile.controller.js";
+import { updateProfileSchema } from "../schemas/profile.schema.js";
 
 export default async function profileRoutes(fastify: FastifyInstance) {
   fastify.addHook("onRequest", fastify.authenticate);

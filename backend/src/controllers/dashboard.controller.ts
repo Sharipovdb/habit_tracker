@@ -1,5 +1,5 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
-import { getDashboardStats } from "../services/dashboard.service";
+import { getDashboardStats } from "../services/dashboard.service.js";
 
 export async function dashboard(request: FastifyRequest, reply: FastifyReply) {
   const userId = request.authSession.user.id;

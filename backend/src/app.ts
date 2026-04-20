@@ -1,14 +1,14 @@
 import Fastify from "fastify";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import corsPlugin from "./plugins/cors";
-import authPlugin from "./plugins/auth";
-import habitRoutes from "./routes/habit.routes";
-import logRoutes from "./routes/log.routes";
-import profileRoutes from "./routes/profile.routes";
-import dashboardRoutes from "./routes/dashboard.routes";
-import foodRoutes from "./routes/food.routes";
-import { authNodeHandler, syncLegacyCredentialAccounts } from "./auth";
+import corsPlugin from "./plugins/cors.js";
+import authPlugin from "./plugins/auth.js";
+import habitRoutes from "./routes/habit.routes.js";
+import logRoutes from "./routes/log.routes.js";
+import profileRoutes from "./routes/profile.routes.js";
+import dashboardRoutes from "./routes/dashboard.routes.js";
+import foodRoutes from "./routes/food.routes.js";
+import { authNodeHandler, syncLegacyCredentialAccounts } from "./auth.js";
 
 function getAllowedAuthOrigins() {
   const configuredOrigins = (process.env.CLIENT_ORIGIN ?? "http://localhost:5173")

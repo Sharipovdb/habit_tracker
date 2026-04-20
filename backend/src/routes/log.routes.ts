@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { createLog, getLogs, getStats } from "../controllers/log.controller";
+import { createLog, getLogs, getStats } from "../controllers/log.controller.js";
 
 export default async function logRoutes(fastify: FastifyInstance) {
   // All log routes require authentication

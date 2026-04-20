@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
-import * as habitService from "../services/habit.service";
-import * as logService from "../services/log.service";
-import { asHabitType, toHabitLogDto } from "../utils/api-contracts";
+import * as habitService from "../services/habit.service.js";
+import * as logService from "../services/log.service.js";
+import { asHabitType, toHabitLogDto } from "../utils/api-contracts.js";
 
 export async function createLog(
   request: FastifyRequest<{
