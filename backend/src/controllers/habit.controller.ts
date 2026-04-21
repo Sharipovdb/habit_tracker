@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import type { CreateHabitInput } from "@shared";
-import * as habitService from "../services/habit.service";
-import { toHabitDto } from "../utils/api-contracts";
+import * as habitService from "../services/habit.service.js";
+import { toHabitDto } from "../utils/api-contracts.js";
 
 export async function createHabit(
   request: FastifyRequest<{

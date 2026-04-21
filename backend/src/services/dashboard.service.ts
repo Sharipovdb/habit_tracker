@@ -1,10 +1,10 @@
-import { db } from "../db";
-import { habits, habitLogs } from "../db/schema";
+import { db } from "../db/index.js";
+import { habits, habitLogs } from "../db/schema.js";
 import { eq, and, desc, gte, inArray, lte } from "drizzle-orm";
-import { ensureDefaultHabits } from "./habit.service";
-import { isCompleted } from "./log.service";
+import { ensureDefaultHabits } from "./habit.service.js";
+import { isCompleted } from "./log.service.js";
 import type { DashboardStats } from "@shared";
-import { asHabitType } from "../utils/api-contracts";
+import { asHabitType } from "../utils/api-contracts.js";
 
 function formatDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
