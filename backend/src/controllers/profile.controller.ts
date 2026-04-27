@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import type { UpdateProfileInput } from "@shared";
-import * as profileService from "../services/profile.service";
-import { toUserDto } from "../utils/api-contracts";
+import * as profileService from "../services/profile.service.js";
+import { toUserDto } from "../utils/api-contracts.js";
 
 export async function getProfile(request: FastifyRequest, reply: FastifyReply) {
   const userId = request.authSession.user.id;

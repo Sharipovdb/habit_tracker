@@ -1,23 +1,15 @@
 import Fastify from "fastify";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import corsPlugin from "./plugins/cors";
-import authPlugin from "./plugins/auth";
-import habitRoutes from "./routes/habit.routes";
-import logRoutes from "./routes/log.routes";
-import profileRoutes from "./routes/profile.routes";
-import dashboardRoutes from "./routes/dashboard.routes";
-import foodRoutes from "./routes/food.routes";
-import { authNodeHandler, syncLegacyCredentialAccounts } from "./auth";
-
-function getAllowedAuthOrigins() {
-  const configuredOrigins = (process.env.CLIENT_ORIGIN ?? "http://localhost:5173")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  return new Set(["http://localhost:3000", ...configuredOrigins]);
-}
+import corsPlugin from "./plugins/cors.js";
+import authPlugin from "./plugins/auth.js";
+import habitRoutes from "./routes/habit.routes.js";
+import logRoutes from "./routes/log.routes.js";
+import profileRoutes from "./routes/profile.routes.js";
+import dashboardRoutes from "./routes/dashboard.routes.js";
+import foodRoutes from "./routes/food.routes.js";
+import { authNodeHandler, syncLegacyCredentialAccounts } from "./auth.js";
+import { isAllowedOrigin } from "./utils/origins.js";
 
 function hasMissingRelationError(error: unknown) {
   if (!error || typeof error !== "object") {
@@ -42,7 +34,7 @@ function applyAuthCorsHeaders(request: { headers: Record<string, unknown> }, raw
     return;
   }
 
-  if (!getAllowedAuthOrigins().has(originHeader)) {
+  if (!isAllowedOrigin(originHeader)) {
     return;
   }
 

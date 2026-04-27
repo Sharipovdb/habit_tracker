@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import * as foodService from "../services/food.service";
+import * as foodService from "../services/food.service.js";
 
 export async function searchFood(
   request: FastifyRequest<{ Querystring: { query: string } }>,

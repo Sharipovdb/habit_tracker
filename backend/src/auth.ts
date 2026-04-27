@@ -3,21 +3,13 @@ import bcrypt from "bcryptjs";
 import { betterAuth } from "better-auth";
 import { toNodeHandler } from "better-auth/node";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
-import { db } from "./db";
-import { accounts, users, sessions, verifications } from "./db/schema";
+import { db } from "./db/index.js";
+import { accounts, users, sessions, verifications } from "./db/schema.js";
+import { getConfiguredClientOrigins } from "./utils/origins.js";
 import {
   hashPassword as scryptHash,
   verifyPassword as scryptVerify,
 } from "@better-auth/utils/password";
-
-function getTrustedOrigins() {
-  const configuredOrigins = (process.env.CLIENT_ORIGIN ?? "http://localhost:5173")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  return Array.from(new Set(["http://localhost:3000", ...configuredOrigins]));
-}
 
 function isBcryptHash(hash: string) {
   return /^\$2[aby]?\$/.test(hash);
@@ -48,7 +40,8 @@ async function verifyPasswordWithLegacyFallback({
 export const auth = betterAuth({
   appName: "HabitTracker",
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
-  trustedOrigins: getTrustedOrigins(),
+  basePath: "/api/auth",
+  trustedOrigins: getConfiguredClientOrigins(),
   database: drizzleAdapter(db, {
     provider: "pg",
     usePlural: false,

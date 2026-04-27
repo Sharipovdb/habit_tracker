@@ -4,12 +4,12 @@ import {
   getHabits,
   getHabit,
   deleteHabit,
-} from "../controllers/habit.controller";
+} from "../controllers/habit.controller.js";
 import {
   createHabitSchema,
   getHabitSchema,
   deleteHabitSchema,
-} from "../schemas/habit.schema";
+} from "../schemas/habit.schema.js";
 
 export default async function habitRoutes(fastify: FastifyInstance) {
   // All habit routes require authentication

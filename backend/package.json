@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "tsx dist/server.js",
+    "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
@@ -21,6 +21,7 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.5",
+    "bcryptjs": "^3.0.3",
     "better-auth": "^1.6.3",
     "dotenv": "^17.4.1",
     "drizzle-orm": "^0.45.2",

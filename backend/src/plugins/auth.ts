@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { fromNodeHeaders } from "better-auth/node";
-import { auth } from "../auth";
+import { auth } from "../auth.js";
 
 export default fp(async (fastify: FastifyInstance) => {
   fastify.decorate(
@@ -22,7 +22,7 @@ export default fp(async (fastify: FastifyInstance) => {
 
 declare module "fastify" {
   interface FastifyRequest {
-    authSession: import("../auth").AuthSession;
+    authSession: import("../auth.js").AuthSession;
   }
 
   interface FastifyInstance {

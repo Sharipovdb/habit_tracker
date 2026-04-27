@@ -1,5 +1,5 @@
-import { db } from "../db";
-import { habits } from "../db/schema";
+import { db } from "../db/index.js";
+import { habits } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 import type { HabitType } from "@shared";
 
