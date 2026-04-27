@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createLog, getHabits, getLogs, getStats } from "../api/habits";
+import { useQuery } from "@tanstack/react-query";
 import { getProfile } from "../api/profile";
 import { queryKeys } from "../api/queryKeys";
 import { Activity } from "lucide-react";
 import MonthlyCalendar from "../components/MonthlyCalendar";
+import { useTrackedHabit } from "../hooks/useTrackedHabit";
 import {
   BarChart,
   Bar,
@@ -36,41 +36,23 @@ export default function RunningPage() {
     duration: number;
     calories: number;
   } | null>(null);
-  const queryClient = useQueryClient();
   const profileQuery = useQuery({
     queryKey: queryKeys.profile.current,
     queryFn: getProfile,
   });
-  const habitsQuery = useQuery({
-    queryKey: queryKeys.habits.all,
-    queryFn: getHabits,
+  const {
+    habit: runHabit,
+    habitId,
+    stats,
+    logs,
+    createLogMutation,
+    isLoading,
+    hasError,
+  } = useTrackedHabit({
+    habitType: "run",
+    cacheScope: "running",
+    includeStats: true,
   });
-
-  const runHabit = habitsQuery.data?.find((habit) => habit.type === "run") ?? null;
-  const habitId = runHabit?.id;
-  const statsQuery = useQuery({
-    queryKey: habitId ? queryKeys.habits.stats(habitId) : ["habits", "stats", "running"],
-    queryFn: () => getStats(habitId!),
-    enabled: Boolean(habitId),
-  });
-  const logsQuery = useQuery({
-    queryKey: habitId ? queryKeys.habits.logs(habitId) : ["habits", "logs", "running"],
-    queryFn: () => getLogs(habitId!),
-    enabled: Boolean(habitId),
-  });
-  const createLogMutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => createLog(habitId!, body),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.habits.logs(habitId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-      ]);
-    },
-  });
-
-  const stats = statsQuery.data ?? null;
-  const logs = logsQuery.data ?? [];
   const userWeight = profileQuery.data?.weight ?? 70;
 
   const selectedLog = logs.find((log) => log.date === selectedDate);
@@ -139,9 +121,7 @@ export default function RunningPage() {
     setError("");
   };
 
-  const hasQueryError = habitsQuery.isError || statsQuery.isError || logsQuery.isError;
-
-  if (habitsQuery.isLoading || (habitId && (statsQuery.isLoading || logsQuery.isLoading))) {
+  if (isLoading) {
     return (
       <div>
         <div className="page-header">
@@ -153,7 +133,7 @@ export default function RunningPage() {
     );
   }
 
-  if (hasQueryError || !runHabit) {
+  if (hasError || !runHabit) {
     return (
       <div>
         <div className="page-header">

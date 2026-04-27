@@ -6,11 +6,6 @@ export async function getHabits(): Promise<Habit[]> {
   return data;
 }
 
-export async function getHabit(id: string): Promise<Habit> {
-  const { data } = await api.get<Habit>(`/habits/${id}`);
-  return data;
-}
-
 export async function createHabit(
   title: string,
   type: HabitType,
@@ -41,14 +36,4 @@ export async function getLogs(habitId: string): Promise<HabitLog[]> {
 export async function getStats(habitId: string): Promise<HabitStats> {
   const { data } = await api.get<HabitStats>(`/habits/${habitId}/stats`);
   return data;
-}
-
-export async function getOrCreateHabit(
-  type: HabitType,
-  title: string
-): Promise<Habit> {
-  const habits = await getHabits();
-  const existing = habits.find((h) => h.type === type);
-  if (existing) return existing;
-  return createHabit(title, type);
 }

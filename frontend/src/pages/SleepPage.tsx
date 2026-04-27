@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createLog, getHabits, getLogs, getStats } from "../api/habits";
-import { queryKeys } from "../api/queryKeys";
 import { Moon } from "lucide-react";
 import MonthlyCalendar from "../components/MonthlyCalendar";
+import { useTrackedHabit } from "../hooks/useTrackedHabit";
 
 const TODAY = new Date().toISOString().split("T")[0];
 
@@ -33,37 +31,19 @@ export default function SleepPage() {
   const [result, setResult] = useState<{ score: number; status: string } | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const queryClient = useQueryClient();
-  const habitsQuery = useQuery({
-    queryKey: queryKeys.habits.all,
-    queryFn: getHabits,
+  const {
+    habit: sleepHabit,
+    habitId,
+    stats,
+    logs,
+    createLogMutation,
+    isLoading,
+    hasError,
+  } = useTrackedHabit({
+    habitType: "sleep",
+    cacheScope: "sleep",
+    includeStats: true,
   });
-
-  const sleepHabit = habitsQuery.data?.find((habit) => habit.type === "sleep") ?? null;
-  const habitId = sleepHabit?.id;
-  const statsQuery = useQuery({
-    queryKey: habitId ? queryKeys.habits.stats(habitId) : ["habits", "stats", "sleep"],
-    queryFn: () => getStats(habitId!),
-    enabled: Boolean(habitId),
-  });
-  const logsQuery = useQuery({
-    queryKey: habitId ? queryKeys.habits.logs(habitId) : ["habits", "logs", "sleep"],
-    queryFn: () => getLogs(habitId!),
-    enabled: Boolean(habitId),
-  });
-  const createLogMutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => createLog(habitId!, body),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.habits.logs(habitId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.habits.stats(habitId!) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
-      ]);
-    },
-  });
-
-  const stats = statsQuery.data ?? null;
-  const logs = logsQuery.data ?? [];
 
   const selectedLog = logs.find((log) => log.date === selectedDate);
 
@@ -124,9 +104,7 @@ export default function SleepPage() {
     setError("");
   };
 
-  const hasQueryError = habitsQuery.isError || statsQuery.isError || logsQuery.isError;
-
-  if (habitsQuery.isLoading || (habitId && (statsQuery.isLoading || logsQuery.isLoading))) {
+  if (isLoading) {
     return (
       <div>
         <div className="page-header">
@@ -138,7 +116,7 @@ export default function SleepPage() {
     );
   }
 
-  if (hasQueryError || !sleepHabit) {
+  if (hasError || !sleepHabit) {
     return (
       <div>
         <div className="page-header">
