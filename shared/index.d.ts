@@ -3,6 +3,9 @@ export type HabitType = "run" | "diet" | "sleep" | "other";
 export interface User {
   id: string;
   email: string;
+  notificationEmail?: string | null;
+  reminderEnabled: boolean;
+  timezone: string;
   name?: string | null;
   image?: string | null;
   age?: number | null;
@@ -32,6 +35,9 @@ export interface UpdateProfileInput {
   age?: number;
   height?: number;
   weight?: number;
+  notificationEmail?: string | null;
+  reminderEnabled?: boolean;
+  timezone?: string;
 }
 
 export interface Habit {

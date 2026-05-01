@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "test": "vitest run",
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -28,13 +29,16 @@
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.4",
     "fastify-plugin": "^5.1.0",
+    "nodemailer": "^8.0.7",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@fastify/type-provider-json-schema-to-ts": "^5.0.0",
     "@types/node": "^25.6.0",
+    "@types/nodemailer": "^8.0.0",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.5"
   }
 }

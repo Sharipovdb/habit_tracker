@@ -13,6 +13,9 @@ interface ProfileForm {
   age: string;
   height: string;
   weight: string;
+  notificationEmail: string;
+  reminderEnabled: boolean;
+  timezone: string;
 }
 
 function calculateBmi(heightCm?: number | null, weightKg?: number | null) {
@@ -31,17 +34,21 @@ function getBmiCategory(bmi: number) {
   return "Obese";
 }
 
-function toProfileFormValues(user: User) {
+function toProfileFormValues(user: User, browserTimeZone: string) {
   return {
     name: user.name || "",
     age: user.age?.toString() || "",
     height: user.height?.toString() || "",
     weight: user.weight?.toString() || "",
+    notificationEmail: user.notificationEmail || "",
+    reminderEnabled: user.reminderEnabled,
+    timezone: user.timezone && user.timezone !== "UTC" ? user.timezone : browserTimeZone,
   };
 }
 
 export default function ProfilePage() {
   const [message, setMessage] = useState("");
+  const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const queryClient = useQueryClient();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const { register, handleSubmit, reset, control } = useForm<ProfileForm>();
@@ -52,7 +59,7 @@ export default function ProfilePage() {
 
   const syncProfile = (updatedUser: User, successMessage: string) => {
     queryClient.setQueryData(queryKeys.profile.current, updatedUser);
-    reset(toProfileFormValues(updatedUser));
+    reset(toProfileFormValues(updatedUser, browserTimeZone));
     setMessage(successMessage);
   };
 
@@ -79,6 +86,7 @@ export default function ProfilePage() {
 
   const watchedHeight = useWatch({ control, name: "height" });
   const watchedWeight = useWatch({ control, name: "weight" });
+  const watchedReminderEnabled = useWatch({ control, name: "reminderEnabled" });
   const bmi = calculateBmi(
     watchedHeight ? Number(watchedHeight) : user?.height,
     watchedWeight ? Number(watchedWeight) : user?.weight
@@ -90,8 +98,8 @@ export default function ProfilePage() {
       return;
     }
 
-    reset(toProfileFormValues(user));
-  }, [reset, user]);
+    reset(toProfileFormValues(user, browserTimeZone));
+  }, [browserTimeZone, reset, user]);
 
   const onSubmit = async (data: ProfileForm) => {
     try {
@@ -104,6 +112,9 @@ export default function ProfilePage() {
         age: data.age ? Number(data.age) : undefined,
         height: data.height ? Number(data.height) : undefined,
         weight: data.weight ? Number(data.weight) : undefined,
+        notificationEmail: data.notificationEmail.trim() ? data.notificationEmail.trim() : null,
+        reminderEnabled: data.reminderEnabled,
+        timezone: data.timezone.trim() || browserTimeZone,
       });
     } catch {
       // Error is surfaced through mutation state.
@@ -225,7 +236,12 @@ export default function ProfilePage() {
             )}
           </div>
           <h3 style={{ marginBottom: 4 }}>{user?.name || "No name set"}</h3>
-          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>{user?.email}</p>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginBottom: 4 }}>
+            Account email: {user?.email}
+          </p>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+            Reminder email: {user?.notificationEmail || "not set"}
+          </p>
           <div className="profile-metrics">
             <div className="profile-metric">
               <div className="profile-metric-value">
@@ -287,6 +303,24 @@ export default function ProfilePage() {
               <label>Weight (kg)</label>
               <input type="number" step="0.1" placeholder="70" {...register("weight")} />
             </div>
+            <div className="form-group">
+              <label>Reminder Email</label>
+              <input type="email" placeholder="notify@example.com" {...register("notificationEmail")} />
+            </div>
+            <div className="form-group">
+              <label>Timezone</label>
+              <input type="text" placeholder="Europe/Moscow" {...register("timezone")} />
+              <small style={{ color: "var(--text-secondary)" }}>Detected browser timezone: {browserTimeZone}</small>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <input type="checkbox" {...register("reminderEnabled")} />
+              <span>Send a reminder after 22:00 if there is no log for today.</span>
+            </label>
+            {watchedReminderEnabled && !user?.notificationEmail && (
+              <p style={{ marginTop: -4, marginBottom: 16, color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                Reminders are sent only to the email set in this profile, not to the registration email.
+              </p>
+            )}
             <button type="submit" className="btn btn-primary" disabled={updateProfileMutation.isPending}>
               <Save size={16} /> Save Changes
             </button>

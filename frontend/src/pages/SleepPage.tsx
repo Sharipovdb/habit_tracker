@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Moon } from "lucide-react";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 import { useTrackedHabit } from "../hooks/useTrackedHabit";
+import { getLocalDateString } from "../lib/date";
 
-const TODAY = new Date().toISOString().split("T")[0];
+const TODAY = getLocalDateString();
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function formatDateLabel(date: string) {

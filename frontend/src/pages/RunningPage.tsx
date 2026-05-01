@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getProfile } from "../api/profile";
 import { queryKeys } from "../api/queryKeys";
+import { getLocalDateString } from "../lib/date";
 import { Activity } from "lucide-react";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 import { useTrackedHabit } from "../hooks/useTrackedHabit";
@@ -15,7 +16,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const TODAY = new Date().toISOString().split("T")[0];
+const TODAY = getLocalDateString();
 
 function formatDateLabel(date: string) {
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {

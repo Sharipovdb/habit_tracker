@@ -10,6 +10,7 @@ import {
   real,
   boolean,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -18,6 +19,9 @@ export const users = pgTable("users", {
   email: varchar("email", { length: 255 }).notNull().unique(),
   name: varchar("name", { length: 255 }).default("").notNull(),
   emailVerified: boolean("email_verified").default(false).notNull(),
+  notificationEmail: varchar("notification_email", { length: 255 }),
+  reminderEnabled: boolean("reminder_enabled").default(false).notNull(),
+  timezone: varchar("timezone", { length: 100 }).default("UTC").notNull(),
   image: text("image"),
   legacyPassword: varchar("password", { length: 255 }),
   age: integer("age"),
@@ -99,11 +103,31 @@ export const habitLogs = pgTable("habit_logs", {
   data: jsonb("data").notNull(),
 });
 
+export const reminderEvents = pgTable(
+  "reminder_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    localDate: date("local_date").notNull(),
+    type: varchar("type", { length: 50 }).notNull(),
+    sentTo: varchar("sent_to", { length: 255 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    sentAt: timestamp("sent_at"),
+  },
+  (table) => [
+    index("reminder_events_user_id_idx").on(table.userId),
+    uniqueIndex("reminder_events_user_date_type_idx").on(table.userId, table.localDate, table.type),
+  ]
+);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   habits: many(habits),
   sessions: many(sessions),
   accounts: many(accounts),
+  reminderEvents: many(reminderEvents),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -132,5 +156,12 @@ export const habitLogsRelations = relations(habitLogs, ({ one }) => ({
   habit: one(habits, {
     fields: [habitLogs.habitId],
     references: [habits.id],
+  }),
+}));
+
+export const reminderEventsRelations = relations(reminderEvents, ({ one }) => ({
+  user: one(users, {
+    fields: [reminderEvents.userId],
+    references: [users.id],
   }),
 }));

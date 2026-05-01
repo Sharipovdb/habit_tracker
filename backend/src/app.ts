@@ -10,6 +10,7 @@ import profileRoutes from "./routes/profile.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import foodRoutes from "./routes/food.routes.js";
 import { authNodeHandler, syncLegacyCredentialAccounts } from "./auth.js";
+import { registerReminderScheduler } from "./services/reminder-scheduler.js";
 import { isAllowedOrigin } from "./utils/origins.js";
 
 function hasMissingRelationError(error: unknown) {
@@ -129,6 +130,8 @@ export function buildApp() {
       fastify.log.warn({ error }, "Failed to sync legacy credential accounts");
     }
   });
+
+  registerReminderScheduler(fastify);
 
   // Routes
   fastify.get("/", async () => ({

@@ -5,6 +5,7 @@ import { createLog, getHabits, getLogs } from "../api/habits";
 import { searchFood } from "../api/food";
 import { getProfile } from "../api/profile";
 import { queryKeys } from "../api/queryKeys";
+import { getLocalDateString } from "../lib/date";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 import {
   aggregateFoodTotals,
@@ -25,7 +26,7 @@ import {
 import type { DietActivityLevel, DietFoodEntry, DietGoal, DietMealName, FoodSearchItem } from "../types";
 
 const MEALS: DietMealName[] = ["Breakfast", "Lunch", "Dinner", "Snack"];
-const TODAY = new Date().toISOString().split("T")[0];
+const TODAY = getLocalDateString();
 const DIET_GOAL_OPTIONS: Array<{ value: DietGoal; description: string }> = [
   { value: "cut", description: "Lower calories to reduce weight while keeping protein high." },
   { value: "maintain", description: "Match your daily energy needs and keep your current shape." },

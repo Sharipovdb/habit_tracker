@@ -19,6 +19,9 @@ export function asHabitType(value: string): HabitType {
 export function toUserDto(user: {
   id: string;
   email: string;
+  notificationEmail?: string | null;
+  reminderEnabled?: boolean;
+  timezone?: string | null;
   name?: string | null;
   image?: string | null;
   age?: number | null;
@@ -29,6 +32,9 @@ export function toUserDto(user: {
   return {
     id: user.id,
     email: user.email,
+    notificationEmail: user.notificationEmail ?? null,
+    reminderEnabled: user.reminderEnabled ?? false,
+    timezone: user.timezone ?? "UTC",
     name: user.name,
     image: user.image,
     age: user.age,
