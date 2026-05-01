@@ -25,9 +25,12 @@ export const createDietLogSchema = {
 export const createSleepLogSchema = {
   body: {
     type: "object" as const,
-    required: ["sleepHours"],
+    required: ["bedtime", "wakeTime"],
     properties: {
-      sleepHours: { type: "number" as const, minimum: 0, maximum: 24 },
+      bedtime: { type: "string" as const, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" },
+      wakeTime: { type: "string" as const, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" },
+      awakenings: { type: "number" as const, minimum: 0, maximum: 20 },
+      date: { type: "string" as const },
     },
   },
 };

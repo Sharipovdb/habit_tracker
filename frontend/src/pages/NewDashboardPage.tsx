@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getDashboardStats } from "../api/dashboard";
 import { queryKeys } from "../api/queryKeys";
 import type { DashboardStats } from "../types";
-import { Activity, ListChecks, TrendingUp, CheckCircle, RefreshCw } from "lucide-react";
+import { Activity, ListChecks, TrendingUp, CheckCircle, RefreshCw, Download } from "lucide-react";
 import { formatDietLogDetails } from "../lib/diet";
 import {
   BarChart,
@@ -26,8 +26,8 @@ function formatDetails(log: DashboardStats["recentLogs"][number]) {
   }
 
   if (log.habitType === "sleep") {
-    const data = log.data as { sleepHours?: number; score?: number };
-    return `${data.sleepHours ?? 0} h, score ${data.score ?? 0}`;
+    const data = log.data as { bedtime?: string; wakeTime?: string; sleepHours?: number; score?: number };
+    return `${data.bedtime ?? "--:--"} - ${data.wakeTime ?? "--:--"}, ${data.sleepHours ?? 0} h, score ${data.score ?? 0}`;
   }
 
   if (log.habitType === "diet") {
@@ -84,6 +84,10 @@ export default function DashboardPage() {
     month: "long",
     year: "numeric",
   });
+  const handleExportPdf = async () => {
+    const { exportDashboardMonthlyPdf } = await import("../lib/dashboard-pdf");
+    exportDashboardMonthlyPdf(stats);
+  };
 
   return (
     <div>
@@ -92,9 +96,14 @@ export default function DashboardPage() {
           <h2>Dashboard</h2>
           <p>Your habit tracking overview</p>
         </div>
-        <button className="btn btn-secondary" onClick={() => void dashboardQuery.refetch()} disabled={dashboardQuery.isFetching}>
-          <RefreshCw size={16} /> Refresh
-        </button>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button className="btn btn-secondary" onClick={handleExportPdf}>
+            <Download size={16} /> Export Monthly PDF
+          </button>
+          <button className="btn btn-secondary" onClick={() => void dashboardQuery.refetch()} disabled={dashboardQuery.isFetching}>
+            <RefreshCw size={16} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stat cards */}

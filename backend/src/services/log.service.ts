@@ -185,6 +185,35 @@ function normalizeDietEntries(value: unknown): DietFoodEntry[] {
     .filter((entry): entry is DietFoodEntry => entry !== null);
 }
 
+function parseTimeToMinutes(value: string): number {
+  const [hours, minutes] = value.split(":").map((part) => Number(part));
+  return hours * 60 + minutes;
+}
+
+function calculateSleepHours(bedtime: string, wakeTime: string): number {
+  const bedtimeMinutes = parseTimeToMinutes(bedtime);
+  const wakeMinutes = parseTimeToMinutes(wakeTime);
+  const durationMinutes = wakeMinutes <= bedtimeMinutes
+    ? 24 * 60 - bedtimeMinutes + wakeMinutes
+    : wakeMinutes - bedtimeMinutes;
+
+  return roundToSingleDecimal(durationMinutes / 60);
+}
+
+function calculateSleepScore(sleepHours: number, awakenings: number): number {
+  let score = 10;
+
+  if (sleepHours < 7) {
+    score -= (7 - sleepHours) * 2;
+  } else if (sleepHours > 8) {
+    score -= (sleepHours - 8) * 2;
+  }
+
+  score -= awakenings;
+
+  return Math.max(1, Math.min(10, roundToSingleDecimal(score)));
+}
+
 export function computeLogData(
   type: HabitType,
   input: Record<string, unknown>
@@ -219,18 +248,13 @@ export function computeLogData(
       } satisfies DietLogData;
     }
     case "sleep": {
-      const sleepHours = input.sleepHours as number;
+      const bedtime = input.bedtime as string;
+      const wakeTime = input.wakeTime as string;
       const awakenings = (input.awakenings as number) || 0;
-      let score = 10;
-      if (sleepHours < 4) score -= 5;
-      else if (sleepHours < 5) score -= 4;
-      else if (sleepHours < 6) score -= 3;
-      else if (sleepHours < 7) score -= 1.5;
-      else if (sleepHours > 9) score -= 1;
-      score -= awakenings * 1.2;
-      score = Math.max(1, Math.min(10, Math.round(score * 10) / 10));
-      const status: "success" | "fail" = sleepHours >= 6 ? "success" : "fail";
-      return { sleepHours, awakenings, score, status };
+      const sleepHours = calculateSleepHours(bedtime, wakeTime);
+      const score = calculateSleepScore(sleepHours, awakenings);
+      const status: "success" | "fail" = score >= 7 ? "success" : "fail";
+      return { bedtime, wakeTime, sleepHours, awakenings, score, status };
     }
     case "other": {
       return { completed: input.completed as boolean };

@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { useWatch } from "react-hook-form";
 import type { AxiosError } from "axios";
-import { getProfile, updateProfile } from "../api/profile";
+import { deleteProfileAvatar, getProfile, updateProfile, uploadProfileAvatar } from "../api/profile";
 import { queryKeys } from "../api/queryKeys";
 import type { User } from "../types";
-import { Save } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 
 interface ProfileForm {
   name: string;
@@ -43,17 +43,35 @@ function toProfileFormValues(user: User) {
 export default function ProfilePage() {
   const [message, setMessage] = useState("");
   const queryClient = useQueryClient();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const { register, handleSubmit, reset, control } = useForm<ProfileForm>();
   const profileQuery = useQuery({
     queryKey: queryKeys.profile.current,
     queryFn: getProfile,
   });
+
+  const syncProfile = (updatedUser: User, successMessage: string) => {
+    queryClient.setQueryData(queryKeys.profile.current, updatedUser);
+    reset(toProfileFormValues(updatedUser));
+    setMessage(successMessage);
+  };
+
   const updateProfileMutation = useMutation({
     mutationFn: updateProfile,
     onSuccess: (updatedUser) => {
-      queryClient.setQueryData(queryKeys.profile.current, updatedUser);
-      reset(toProfileFormValues(updatedUser));
-      setMessage("Profile updated successfully!");
+      syncProfile(updatedUser, "Profile updated successfully!");
+    },
+  });
+  const uploadAvatarMutation = useMutation({
+    mutationFn: uploadProfileAvatar,
+    onSuccess: (updatedUser) => {
+      syncProfile(updatedUser, "Avatar updated successfully!");
+    },
+  });
+  const deleteAvatarMutation = useMutation({
+    mutationFn: deleteProfileAvatar,
+    onSuccess: (updatedUser) => {
+      syncProfile(updatedUser, "Avatar removed successfully!");
     },
   });
 
@@ -79,6 +97,8 @@ export default function ProfilePage() {
     try {
       setMessage("");
       updateProfileMutation.reset();
+      uploadAvatarMutation.reset();
+      deleteAvatarMutation.reset();
       await updateProfileMutation.mutateAsync({
         name: data.name || undefined,
         age: data.age ? Number(data.age) : undefined,
@@ -90,10 +110,60 @@ export default function ProfilePage() {
     }
   };
 
+  const onAvatarChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      setMessage("");
+      updateProfileMutation.reset();
+      uploadAvatarMutation.reset();
+      deleteAvatarMutation.reset();
+      await uploadAvatarMutation.mutateAsync(file);
+    } catch {
+      // Error is surfaced through mutation state.
+    }
+  };
+
+  const onAvatarUploadClick = () => {
+    if (uploadAvatarMutation.isPending || deleteAvatarMutation.isPending) {
+      return;
+    }
+
+    avatarInputRef.current?.click();
+  };
+
+  const onAvatarDelete = async () => {
+    try {
+      setMessage("");
+      updateProfileMutation.reset();
+      uploadAvatarMutation.reset();
+      deleteAvatarMutation.reset();
+      await deleteAvatarMutation.mutateAsync();
+    } catch {
+      // Error is surfaced through mutation state.
+    }
+  };
+
   const mutationError = updateProfileMutation.error as AxiosError<{ error?: string }> | null;
+  const uploadAvatarError = uploadAvatarMutation.error as AxiosError<{ error?: string }> | null;
+  const deleteAvatarError = deleteAvatarMutation.error as AxiosError<{ error?: string }> | null;
   const error = profileQuery.isError
     ? "Failed to load profile"
-    : mutationError?.response?.data?.error || (updateProfileMutation.isError ? "Failed to update profile" : "");
+    : uploadAvatarError?.response?.data?.error
+      || deleteAvatarError?.response?.data?.error
+      || mutationError?.response?.data?.error
+      || (uploadAvatarMutation.isError
+        ? "Failed to update avatar"
+        : deleteAvatarMutation.isError
+          ? "Failed to remove avatar"
+          : updateProfileMutation.isError
+            ? "Failed to update profile"
+            : "");
 
   if (profileQuery.isLoading && !user) {
     return (
@@ -107,9 +177,8 @@ export default function ProfilePage() {
     );
   }
 
-  const initials = user?.name
-    ? user.name.charAt(0).toUpperCase()
-    : user?.email?.charAt(0).toUpperCase() || "?";
+  const isAvatarBusy = uploadAvatarMutation.isPending || deleteAvatarMutation.isPending;
+  const avatarAlt = `${user?.name || user?.email || "User"} avatar`;
 
   return (
     <div>
@@ -119,9 +188,42 @@ export default function ProfilePage() {
       </div>
 
       <div className="card-grid card-grid-2">
-        {/* Profile card */}
-        <div className="card" style={{ textAlign: "center", paddingTop: 40, paddingBottom: 40 }}>
-          <div className="profile-avatar">{initials}</div>
+        <div className="card profile-card">
+          <div className={`profile-avatar-shell${user?.image ? " has-image" : " is-empty"}`}>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="profile-avatar-input"
+              onChange={onAvatarChange}
+            />
+            {user?.image ? (
+              <>
+                <div className={`profile-avatar profile-avatar-filled${isAvatarBusy ? " is-busy" : ""}`}>
+                  <img src={user.image} alt={avatarAlt} className="profile-avatar-image" />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-icon profile-avatar-delete"
+                  onClick={onAvatarDelete}
+                  disabled={isAvatarBusy}
+                  aria-label="Delete profile avatar"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={`profile-avatar profile-avatar-upload${isAvatarBusy ? " is-busy" : ""}`}
+                onClick={onAvatarUploadClick}
+                disabled={isAvatarBusy}
+                aria-label="Upload profile avatar"
+              >
+                <Plus size={44} strokeWidth={2.25} />
+              </button>
+            )}
+          </div>
           <h3 style={{ marginBottom: 4 }}>{user?.name || "No name set"}</h3>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>{user?.email}</p>
           <div className="profile-metrics">

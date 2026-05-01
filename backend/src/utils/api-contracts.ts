@@ -20,6 +20,7 @@ export function toUserDto(user: {
   id: string;
   email: string;
   name?: string | null;
+  image?: string | null;
   age?: number | null;
   height?: number | null;
   weight?: number | null;
@@ -29,6 +30,7 @@ export function toUserDto(user: {
     id: user.id,
     email: user.email,
     name: user.name,
+    image: user.image,
     age: user.age,
     height: user.height,
     weight: user.weight,

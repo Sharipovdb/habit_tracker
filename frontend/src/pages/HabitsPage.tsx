@@ -8,7 +8,7 @@ export default function HabitsPage() {
     {
       icon: <Moon size={24} />,
       title: "Sleep Control",
-      desc: "Track sleep hours, awakenings, and get a quality score",
+      desc: "Log bedtime, wake-up time, and awakenings for an automatic sleep score",
       path: "/sleep",
       colorClass: "sleep",
     },
@@ -46,7 +46,7 @@ export default function HabitsPage() {
         {cards.map((c) => (
           <div
             key={c.path}
-            className="habit-type-card"
+            className={`habit-type-card habit-type-card--${c.colorClass}`}
             onClick={() => navigate(c.path)}
           >
             <div className={`type-icon ${c.colorClass}`}>{c.icon}</div>

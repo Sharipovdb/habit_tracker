@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import multipart from "@fastify/multipart";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import corsPlugin from "./plugins/cors.js";
@@ -76,6 +77,11 @@ export function buildApp() {
   // Plugins
   fastify.register(corsPlugin);
   fastify.register(authPlugin);
+  fastify.register(multipart, {
+    limits: {
+      files: 1,
+    },
+  });
   fastify.register(swagger, {
     openapi: {
       info: {

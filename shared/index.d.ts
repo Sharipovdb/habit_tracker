@@ -4,6 +4,7 @@ export interface User {
   id: string;
   email: string;
   name?: string | null;
+  image?: string | null;
   age?: number | null;
   height?: number | null;
   weight?: number | null;
@@ -109,6 +110,8 @@ export interface DietLogData {
 }
 
 export interface SleepLogData {
+  bedtime: string;
+  wakeTime: string;
   sleepHours: number;
   awakenings: number;
   score: number;
