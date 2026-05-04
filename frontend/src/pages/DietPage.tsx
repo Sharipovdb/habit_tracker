@@ -5,7 +5,7 @@ import { createLog, getHabits, getLogs } from "../api/habits";
 import { searchFood } from "../api/food";
 import { getProfile } from "../api/profile";
 import { queryKeys } from "../api/queryKeys";
-import { getLocalDateString } from "../lib/date";
+import { formatDateLabel, getLocalDateString } from "../lib/date";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 import {
   aggregateFoodTotals,
@@ -37,14 +37,6 @@ const ACTIVITY_LEVEL_OPTIONS: Array<{ value: DietActivityLevel; description: str
   { value: "medium", description: "Regular training or a moderately active routine." },
   { value: "high", description: "Hard training volume or a very active lifestyle." },
 ];
-
-function formatDateLabel(date: string) {
-  return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function buildEntry(product: FoodSearchItem, meal: DietMealName, grams: number): DietFoodEntry {
   return {

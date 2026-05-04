@@ -7,7 +7,7 @@ export async function createHabit(
   request: FastifyRequest<{
     Body: CreateHabitInput;
   }>,
-  reply: FastifyReply
+  reply: FastifyReply,
 ) {
   const { title, type, target } = request.body;
   const userId = request.authSession.user.id;
@@ -15,30 +15,15 @@ export async function createHabit(
   return reply.status(201).send(toHabitDto(habit));
 }
 
-export async function getHabits(
-  request: FastifyRequest,
-  reply: FastifyReply
-) {
+export async function getHabits(request: FastifyRequest, reply: FastifyReply) {
   const userId = request.authSession.user.id;
   const habits = await habitService.getHabitsByUser(userId);
   return reply.send(habits.map(toHabitDto));
 }
 
-export async function getHabit(
-  request: FastifyRequest<{ Params: { id: string } }>,
-  reply: FastifyReply
-) {
-  const userId = request.authSession.user.id;
-  const habit = await habitService.getHabitById(request.params.id, userId);
-  if (!habit) {
-    return reply.status(404).send({ error: "Habit not found" });
-  }
-  return reply.send(toHabitDto(habit));
-}
-
 export async function deleteHabit(
   request: FastifyRequest<{ Params: { id: string } }>,
-  reply: FastifyReply
+  reply: FastifyReply,
 ) {
   const userId = request.authSession.user.id;
   const deleted = await habitService.deleteHabit(request.params.id, userId);

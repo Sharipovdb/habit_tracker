@@ -240,7 +240,7 @@ export default function ProfilePage() {
             Account email: {user?.email}
           </p>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-            Reminder email: {user?.notificationEmail || "not set"}
+            Notification email: {user?.notificationEmail || "not set"}
           </p>
           <div className="profile-metrics">
             <div className="profile-metric">
@@ -304,7 +304,7 @@ export default function ProfilePage() {
               <input type="number" step="0.1" placeholder="70" {...register("weight")} />
             </div>
             <div className="form-group">
-              <label>Reminder Email</label>
+              <label>Notification Email</label>
               <input type="email" placeholder="notify@example.com" {...register("notificationEmail")} />
             </div>
             <div className="form-group">
@@ -314,11 +314,11 @@ export default function ProfilePage() {
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
               <input type="checkbox" {...register("reminderEnabled")} />
-              <span>Send a reminder after 22:00 if there is no log for today.</span>
+              <span>Email me when profile changes are saved.</span>
             </label>
             {watchedReminderEnabled && !user?.notificationEmail && (
               <p style={{ marginTop: -4, marginBottom: 16, color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                Reminders are sent only to the email set in this profile, not to the registration email.
+                Notifications are sent immediately to the email set in this profile, not to the registration email.
               </p>
             )}
             <button type="submit" className="btn btn-primary" disabled={updateProfileMutation.isPending}>

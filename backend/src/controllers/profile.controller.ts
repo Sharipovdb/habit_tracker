@@ -2,7 +2,9 @@ import { createReadStream } from "node:fs";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { UpdateProfileInput } from "@shared";
 import * as profileService from "../services/profile.service.js";
+import { createReminderMailer } from "../services/reminder-mailer.js";
 import { toUserDto } from "../utils/api-contracts.js";
+import { getRequestUserId } from "../utils/request-auth.js";
 import {
   AvatarStorageError,
   MAX_AVATAR_FILE_SIZE,
@@ -12,7 +14,7 @@ import {
 } from "../utils/avatar-storage.js";
 
 export async function getProfile(request: FastifyRequest, reply: FastifyReply) {
-  const userId = request.authSession.user.id;
+  const userId = getRequestUserId(request);
   const profile = await profileService.getProfile(userId);
   if (!profile) {
     return reply.status(404).send({ error: "User not found" });
@@ -26,16 +28,32 @@ export async function updateProfile(
   }>,
   reply: FastifyReply
 ) {
-  const userId = request.authSession.user.id;
+  const userId = getRequestUserId(request);
   const updated = await profileService.updateProfile(userId, request.body);
   if (!updated) {
     return reply.status(404).send({ error: "User not found" });
   }
+
+  if (updated.reminderEnabled && updated.notificationEmail) {
+    const mailer = createReminderMailer({ logger: request.log });
+
+    if (mailer) {
+      try {
+        await mailer.sendProfileUpdatedNotification({
+          to: updated.notificationEmail,
+          recipientName: updated.name,
+        });
+      } catch (error) {
+        request.log.error({ error, userId }, "Failed to send profile update notification");
+      }
+    }
+  }
+
   return reply.send(toUserDto(updated));
 }
 
 export async function uploadAvatar(request: FastifyRequest, reply: FastifyReply) {
-  const userId = request.authSession.user.id;
+  const userId = getRequestUserId(request);
   const profile = await profileService.getProfile(userId);
 
   if (!profile) {
@@ -90,7 +108,7 @@ export async function uploadAvatar(request: FastifyRequest, reply: FastifyReply)
 }
 
 export async function deleteAvatar(request: FastifyRequest, reply: FastifyReply) {
-  const userId = request.authSession.user.id;
+  const userId = getRequestUserId(request);
   const profile = await profileService.getProfile(userId);
 
   if (!profile) {

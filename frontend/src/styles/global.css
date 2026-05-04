@@ -689,19 +689,19 @@ body {
 }
 
 .habit-type-card--sleep {
-  background-image: url("/public/habits/1.png");
+  background-image: url("/habits/1.png");
 }
 
 .habit-type-card--run {
-  background-image: url("/public/habits/2.png");
+  background-image: url("/habits/2.png");
 }
 
 .habit-type-card--diet {
-  background-image: url("/public/habits/3.png");
+  background-image: url("/habits/3.png");
 }
 
 .habit-type-card--other {
-  background-image: url("/public/habits/4.png");
+  background-image: url("/habits/4.png");
 }
 
 /* ========== TABLE ========== */

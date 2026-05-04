@@ -5,3 +5,11 @@ export function getLocalDateString(date = new Date()) {
 
   return `${year}-${month}-${day}`;
 }
+
+export function formatDateLabel(date: string) {
+  return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
