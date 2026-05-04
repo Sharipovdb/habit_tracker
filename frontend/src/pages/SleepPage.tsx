@@ -2,18 +2,10 @@ import { useEffect, useState } from "react";
 import { Moon } from "lucide-react";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 import { useTrackedHabit } from "../hooks/useTrackedHabit";
-import { getLocalDateString } from "../lib/date";
+import { formatDateLabel, getLocalDateString } from "../lib/date";
 
 const TODAY = getLocalDateString();
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-function formatDateLabel(date: string) {
-  return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function parseTimeToMinutes(value: string): number {
   const [hours, minutes] = value.split(":").map((part) => Number(part));

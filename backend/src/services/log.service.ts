@@ -13,30 +13,12 @@ import type {
   HabitType,
   LogData,
 } from "@shared";
+import { asNullableNumber, roundToSingleDecimal } from "../utils/number.js";
 
 const DIET_MEALS = ["Breakfast", "Lunch", "Dinner", "Snack"] as const;
 const DIET_GOALS = ["cut", "maintain", "bulk"] as const;
 const DIET_ACTIVITY_LEVELS = ["light", "medium", "high"] as const;
 const BMI_CATEGORIES = ["underweight", "normal", "overweight", "obese"] as const;
-
-function roundToSingleDecimal(value: number): number {
-  return Math.round(value * 10) / 10;
-}
-
-function asNullableNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return roundToSingleDecimal(value);
-  }
-
-  if (typeof value === "string") {
-    const numericValue = Number(value);
-    if (Number.isFinite(numericValue)) {
-      return roundToSingleDecimal(numericValue);
-    }
-  }
-
-  return null;
-}
 
 function normalizeNutrients(value: unknown): FoodNutrients {
   const nutrients = (value as Partial<FoodNutrients> | undefined) ?? {};

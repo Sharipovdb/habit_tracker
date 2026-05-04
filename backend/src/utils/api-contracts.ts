@@ -4,7 +4,7 @@ function toIsoDateTimeString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-function toDateOnlyString(value: Date | string): string {
+export function toDateOnlyString(value: Date | string): string {
   return value instanceof Date ? value.toISOString().split("T")[0] : value;
 }
 

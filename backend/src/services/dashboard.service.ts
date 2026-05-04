@@ -4,18 +4,14 @@ import { eq, and, desc, gte, inArray, lte } from "drizzle-orm";
 import { ensureDefaultHabits } from "./habit.service.js";
 import { isCompleted } from "./log.service.js";
 import type { DashboardStats } from "@shared";
-import { asHabitType } from "../utils/api-contracts.js";
-
-function formatDate(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
+import { asHabitType, toDateOnlyString } from "../utils/api-contracts.js";
 
 export async function getDashboardStats(userId: string): Promise<DashboardStats> {
   const userHabits = await ensureDefaultHabits(userId);
   const todayDate = new Date();
-  const today = formatDate(todayDate);
-  const monthStart = formatDate(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
-  const monthEnd = formatDate(new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0));
+  const today = toDateOnlyString(todayDate);
+  const monthStart = toDateOnlyString(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+  const monthEnd = toDateOnlyString(new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0));
   const habitIds = userHabits.map((habit) => habit.id);
   const habitMap = new Map(userHabits.map((habit) => [habit.id, habit]));
   const habitsByType = userHabits.reduce<DashboardStats["habitsByType"]>(
@@ -134,7 +130,7 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
 
       return {
         ...log,
-        date: typeof log.date === "string" ? log.date : formatDate(log.date),
+        date: toDateOnlyString(log.date),
         data: log.data as DashboardStats["recentLogs"][number]["data"],
         habitTitle: habit?.title ?? "Unknown Habit",
         habitType: habit ? asHabitType(habit.type) : "other",

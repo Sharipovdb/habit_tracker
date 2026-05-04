@@ -1,4 +1,5 @@
 import type { FoodNutrients, FoodSearchItem, FoodSearchResponse } from "@shared";
+import { asNullableNumber, roundToSingleDecimal } from "../utils/number.js";
 
 const OPEN_FOOD_FACTS_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
 const DEFAULT_USER_AGENT =
@@ -72,14 +73,6 @@ function setCachedSearch(query: string, response: FoodSearchResponse) {
   });
 }
 
-function asNullableNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.round(value * 10) / 10;
-  }
-
-  return null;
-}
-
 function toCaloriesPer100g(nutriments?: OpenFoodFactsNutriments): number | null {
   if (!nutriments) {
     return null;
@@ -95,7 +88,7 @@ function toCaloriesPer100g(nutriments?: OpenFoodFactsNutriments): number | null 
     return null;
   }
 
-  return Math.round((energyKj / 4.184) * 10) / 10;
+  return roundToSingleDecimal(energyKj / 4.184);
 }
 
 function toPer100g(nutriments?: OpenFoodFactsNutriments): FoodNutrients {

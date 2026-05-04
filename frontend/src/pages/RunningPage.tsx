@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getProfile } from "../api/profile";
 import { queryKeys } from "../api/queryKeys";
-import { getLocalDateString } from "../lib/date";
+import { formatDateLabel, getLocalDateString } from "../lib/date";
 import { Activity } from "lucide-react";
 import MonthlyCalendar from "../components/MonthlyCalendar";
 import { useTrackedHabit } from "../hooks/useTrackedHabit";
@@ -17,14 +17,6 @@ import {
 } from "recharts";
 
 const TODAY = getLocalDateString();
-
-function formatDateLabel(date: string) {
-  return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 export default function RunningPage() {
   const [distance, setDistance] = useState("");
@@ -59,8 +51,7 @@ export default function RunningPage() {
   const selectedLog = logs.find((log) => log.date === selectedDate);
 
   const syncEntryForDate = (date: string) => {
-    const availableLogs = logs;
-    const matchingLog = availableLogs.find((log) => log.date === date);
+    const matchingLog = logs.find((log) => log.date === date);
     const data = matchingLog?.data as Record<string, unknown> | undefined;
 
     setDistance(data?.distance !== undefined ? String(data.distance) : "");
