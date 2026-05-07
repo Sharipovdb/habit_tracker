@@ -21,27 +21,20 @@ export function uniqueEmail(prefix = "user"): string {
   return `${prefix}-${Date.now()}-${_counter}@e2e.test`;
 }
 
-// ---------------------------------------------------------------------------
-// API helper: register a new user through the backend
-// ---------------------------------------------------------------------------
+/**
+ * API helper: register a new user through the backend via Playwright's request context.
+ * @param request - Playwright `APIRequestContext` (from `test.request`)
+ */
 export async function apiRegister(
-  request: Parameters<typeof base.extend>[0] extends object
-    ? never
-    : ReturnType<typeof base["extend"]> extends infer T
-      ? T extends { request: infer R }
-        ? R
-        : never
-      : never,
+  request: { post: (url: string, opts: { data: object }) => Promise<{ status: () => number }> },
   email: string,
   password: string,
 ): Promise<void> {
-  const resp = await (request as Parameters<typeof fetch>[0] extends never ? never : {
-    post: (url: string, opts: object) => Promise<{ status: () => number; json: () => Promise<unknown> }>;
-  })["post"](`${API_URL}/auth/sign-up/email`, {
+  const resp = await request.post(`${API_URL}/auth/sign-up/email`, {
     data: { email, password, name: "E2E Test User" },
   });
-  // Accept 200 (new user) or 422 (user already exists)
-  const status = (resp as { status: () => number }).status();
+  const status = resp.status();
+  // Accept 200/201 (new user) or 422 (already exists in repeated runs)
   if (status !== 200 && status !== 201 && status !== 422) {
     throw new Error(`Registration failed with status ${status}`);
   }
